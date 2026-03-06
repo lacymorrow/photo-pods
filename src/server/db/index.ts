@@ -68,5 +68,6 @@ export const safeDbExecute = async <T>(
 
 // Export schema for direct usage
 export * from "./schema";
+export * from "./pods-schema";
 
 export { schema };
