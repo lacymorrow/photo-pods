@@ -85,3 +85,6 @@ gha-creds-*.json
 # AI
 ai.mdx
 .env*.local
+
+# Supabase
+supabase/.temp/
