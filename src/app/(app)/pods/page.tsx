@@ -57,18 +57,19 @@ export default async function PodsPage() {
 	}
 
 	return (
-		<div className="container max-w-6xl py-8">
-			<div className="flex items-center justify-between mb-8">
-				<div>
-					<h1 className="text-3xl font-bold">My Pods</h1>
-					<p className="text-muted-foreground mt-1">
+		<div className="container max-w-6xl px-4 sm:px-6 py-6 sm:py-8">
+			<div className="flex items-center justify-between gap-4 mb-6 sm:mb-8">
+				<div className="min-w-0">
+					<h1 className="text-2xl sm:text-3xl font-bold">My Pods</h1>
+					<p className="text-muted-foreground mt-1 text-sm sm:text-base">
 						Your shared photo collections
 					</p>
 				</div>
-				<Button asChild>
+				<Button asChild className="shrink-0">
 					<Link href="/pods/new">
 						<Plus className="h-4 w-4 mr-1" />
-						New Pod
+						<span className="hidden sm:inline">New Pod</span>
+						<span className="sm:hidden">New</span>
 					</Link>
 				</Button>
 			</div>
