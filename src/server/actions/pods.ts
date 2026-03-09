@@ -312,14 +312,20 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
 		throw new Error("Invalid file type. Allowed: JPEG, PNG, WebP, HEIC");
 	}
 
-	// For now, use the existing S3 upload service
-	// Convert File to Buffer for storage
-	const buffer = Buffer.from(await file.arrayBuffer());
-	const fileName = `pods/${podId}/${Date.now()}-${file.name}`;
-
-	// Use the existing file upload infrastructure
-	const { uploadFile } = await import("@/server/services/file");
-	const { url } = await uploadFile(file as any);
+	// Upload to Vercel Blob (primary) or S3 (fallback)
+	let url: string;
+	try {
+		const { put } = await import("@vercel/blob");
+		const blob = await put(`pods/${podId}/${Date.now()}-${file.name}`, file, {
+			access: "public",
+		});
+		url = blob.url;
+	} catch {
+		// Fall back to S3 if Vercel Blob isn't configured
+		const { uploadFile } = await import("@/server/services/file");
+		const result = await uploadFile(file as any);
+		url = result.url;
+	}
 
 	const [photo] = await database
 		.insert(podPhotos)
