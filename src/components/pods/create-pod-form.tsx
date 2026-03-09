@@ -2,7 +2,7 @@
 
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,18 +19,24 @@ import { createPod } from "@/server/actions/pods";
 export const CreatePodForm = () => {
 	const router = useRouter();
 	const [isPending, startTransition] = useTransition();
+	const [error, setError] = useState<string | null>(null);
 
 	const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
 		e.preventDefault();
+		setError(null);
 		const formData = new FormData(e.currentTarget);
 
 		startTransition(async () => {
-			const pod = await createPod({
-				name: formData.get("name") as string,
-				description: (formData.get("description") as string) || undefined,
-				visibility: (formData.get("visibility") as "public" | "private" | "invite-only") ?? "invite-only",
-			});
-			router.push(`/pods/${pod.id}`);
+			try {
+				const pod = await createPod({
+					name: formData.get("name") as string,
+					description: (formData.get("description") as string) || undefined,
+					visibility: (formData.get("visibility") as "public" | "private" | "invite-only") ?? "invite-only",
+				});
+				router.push(`/pods/${pod.id}`);
+			} catch (err) {
+				setError(err instanceof Error ? err.message : "Failed to create pod. Please try again.");
+			}
 		});
 	};
 
@@ -73,6 +79,10 @@ export const CreatePodForm = () => {
 					Invite-only: only people with an invite link can join. Private: visible to members only. Public: anyone can view.
 				</p>
 			</div>
+
+			{error && (
+				<p className="text-sm text-destructive">{error}</p>
+			)}
 
 			<Button type="submit" disabled={isPending}>
 				{isPending ? (

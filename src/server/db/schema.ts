@@ -684,3 +684,6 @@ export type NewDeployment = typeof deployments.$inferInsert;
 export const deploymentsRelations = relations(deployments, ({ one }) => ({
 	user: one(users, { fields: [deployments.userId], references: [users.id] }),
 }));
+
+// Re-export pods schema so drizzle client has access to pod tables and relations
+export * from "./pods-schema";
