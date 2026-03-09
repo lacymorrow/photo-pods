@@ -1,6 +1,6 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
+import { CloudUpload, Trash2 } from "lucide-react";
 import Image from "next/image";
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
@@ -41,8 +41,14 @@ export const PhotoGrid = ({ photos, canDelete, currentUserId }: PhotoGridProps) 
 
 	if (photos.length === 0) {
 		return (
-			<div className="flex flex-col items-center justify-center py-16 text-center">
-				<p className="text-muted-foreground">No photos yet. Be the first to upload!</p>
+			<div className="flex flex-col items-center justify-center py-20 text-center">
+				<div className="rounded-full bg-muted p-6 mb-4">
+					<CloudUpload className="h-8 w-8 text-muted-foreground/50" />
+				</div>
+				<h3 className="font-semibold text-lg">No photos yet</h3>
+				<p className="text-muted-foreground mt-1 max-w-xs">
+					Be the first to upload! Drag & drop photos into the upload area above.
+				</p>
 			</div>
 		);
 	}
