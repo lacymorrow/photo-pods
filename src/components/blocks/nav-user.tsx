@@ -11,6 +11,7 @@ import {
 	SidebarMenuItem,
 	useSidebar,
 } from "@/components/ui/sidebar";
+import { env } from "@/env";
 import { useIsAdmin } from "@/hooks/use-is-admin";
 import { useSubscription } from "@/hooks/use-subscription";
 import { cn } from "@/lib/utils";
@@ -44,7 +45,11 @@ export function NavUser({ className, showUpgrade = true }: NavUserProps) {
 					user={session?.user}
 					showUpgrade={showUpgrade}
 					hasActiveSubscription={hasActiveSubscription}
-					showOnboarding={true}
+					showOnboarding={
+						env.NEXT_PUBLIC_FEATURE_VERCEL_INTEGRATION_ENABLED &&
+						env.NEXT_PUBLIC_FEATURE_GITHUB_API_ENABLED &&
+						env.NEXT_PUBLIC_FEATURE_DATABASE_ENABLED
+					}
 					side={isMobile ? "bottom" : "right"}
 					align="end"
 					sideOffset={4}

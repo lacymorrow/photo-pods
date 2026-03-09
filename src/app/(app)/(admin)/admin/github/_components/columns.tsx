@@ -19,6 +19,7 @@ export interface GitHubUserData {
 	createdAt: Date;
 	updatedAt: Date | null;
 	githubDetails: GitHubProfile | null;
+	isOwner: boolean;
 }
 
 function formatDate(date: Date | null) {
@@ -127,6 +128,8 @@ export const columns: ColumnDef<GitHubUserData>[] = [
 					});
 				}
 			};
+
+			if (row.original.isOwner) return null;
 
 			return (
 				<Button variant="ghost" size="icon" onClick={() => void handleRevoke()} className="h-8 w-8">

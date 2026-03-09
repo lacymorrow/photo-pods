@@ -219,7 +219,6 @@ export async function createLemonSqueezyPayment(data: {
 	}
 }
 
-
 /**
  * Server action to generate a Polar checkout URL
  */
@@ -372,7 +371,6 @@ export async function importPayments(
 	}
 }
 
-
 /**
  * Server action to delete all payments from the database
  * @returns Result of the delete operation
@@ -508,8 +506,6 @@ export async function createPayment(data: {
 	}
 }
 
-
-
 export async function importPaymentsFromAllProviders() {
 	try {
 		const session = await requireAdmin();
@@ -530,3 +526,12 @@ export async function importPaymentsFromAllProviders() {
 	}
 }
 
+/**
+ * Gets the payment status for the current user
+ * @returns Whether the user has paid
+ */
+export async function getUserPaymentStatus(): Promise<boolean> {
+	const session = await getSession();
+	if (!session?.user?.id) return false;
+	return await PaymentService.getUserPaymentStatus(session.user.id);
+}

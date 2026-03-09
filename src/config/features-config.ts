@@ -19,6 +19,13 @@ function hasEnv(...names: string[]): boolean {
 	});
 }
 
+function hasAnyEnv(...names: string[]): boolean {
+	return names.some((name) => {
+		const value = process.env[name];
+		return typeof value === "string" && value.trim().length > 0;
+	});
+}
+
 /**
  * Check if environment variable is enabled (true/1/yes/on)
  */
@@ -29,6 +36,9 @@ export function envIsTrue(name: string): boolean {
 
 // ======== Public Env Mirrors =========
 /**
+ * !!!!!!! IMPORTANT !!!!!!!
+ * ! THESE VARIABLES ARE EXPOSED TO THE CLIENT !
+ * ! USE WITH CAUTION !
  * Mirror server-side public keys to NEXT_PUBLIC_ variants at build time.
  * This allows users to set e.g. STRIPE_PUBLISHABLE_KEY and have
  * NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY generated automatically for the client bundle.
@@ -56,38 +66,38 @@ const PUBLIC_ENV_BASE_KEYS = [
 ];
 
 function getEnvValue(name: string): string | undefined {
-	const value = process.env[name];
+	const upper = name.toUpperCase();
+	// Check exact key first, then fall back to case-insensitive scan
+	const value =
+		process.env[name] ??
+		process.env[upper] ??
+		Object.entries(process.env).find(([k]) => k.toUpperCase() === upper)?.[1];
 	if (typeof value !== "string") return undefined;
 	const trimmed = value.trim();
 	return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function mirrorPublicEnvVariables(): Record<`NEXT_PUBLIC_${string}`, string> {
-	const mirrored: Record<`NEXT_PUBLIC_${string}`, string> = {} as Record<
-		`NEXT_PUBLIC_${string}`,
-		string
-	>;
+	const mirrored: Record<string, string> = {};
 
 	for (const base of PUBLIC_ENV_BASE_KEYS) {
 		const publicKey = `NEXT_PUBLIC_${base}` as const;
 
-		// Prefer explicitly provided NEXT_PUBLIC_ value if present
-		const explicitPublic = getEnvValue(publicKey);
-		if (explicitPublic) {
-			mirrored[publicKey] = explicitPublic;
-			continue;
-		}
+		// Prefer explicitly provided NEXT_PUBLIC_ value, fall back to base key
+		const value = getEnvValue(publicKey) ?? getEnvValue(base);
 
-		// Otherwise, mirror from server-side base key if present
-		const serverValue = getEnvValue(base);
-		if (serverValue) {
-			// Make it available during this build process
-			process.env[publicKey] = serverValue;
-			mirrored[publicKey] = serverValue;
+		if (value) {
+			// Always set both forms on process.env so hasEnv(), T3 Env runtimeEnv,
+			// and downstream feature detection all see the values consistently
+			process.env[base] = value;
+			process.env[publicKey] = value;
+
+			// Return NEXT_PUBLIC_ form for next.config.ts env injection (client bundle)
+			mirrored[publicKey] = value;
 		}
 	}
 
-	return mirrored;
+	return mirrored as Record<`NEXT_PUBLIC_${string}`, string>;
 }
 
 // Execute mirroring immediately so feature detection below can see NEXT_PUBLIC_* keys
@@ -100,8 +110,34 @@ const buildTimeFeatures = {} as Record<string, boolean>;
 // Secrets can be derived from a single APP_SECRET. If APP_SECRET exists,
 // treat dependent secrets as satisfied for feature detection.
 function secretProvidedOrDerivable(name: string): boolean {
-	return hasEnv(name) || hasEnv("APP_SECRET");
+	return hasAnyEnv(name, "APP_SECRET");
 }
+
+export type AiProviderId = "claude-code" | "codex" | "gemini";
+
+export interface AiProvider {
+	id: AiProviderId;
+	/** Resolved value of the relevant API key for this provider. */
+	env: string | undefined;
+}
+
+/*
+ * Generic preferred AI provider resolved at build time.
+ * Carries a single resolved `env` value — whichever API key is present.
+ * Downstream configs (e.g. react-grab-config) import this and layer feature-specific details on top.
+ */
+export const preferredAiProvider: AiProvider | undefined = (() => {
+	if (hasEnv("ANTHROPIC_API_KEY") && !envIsTrue("DISABLE_ANTHROPIC"))
+		return { id: "claude-code", env: getEnvValue("ANTHROPIC_API_KEY") };
+	if (hasEnv("OPENAI_API_KEY") && !envIsTrue("DISABLE_OPENAI"))
+		return { id: "codex", env: getEnvValue("OPENAI_API_KEY") };
+	if (hasAnyEnv("GOOGLE_GEMINI_API_KEY", "GOOGLE_API_KEY"))
+		return {
+			id: "gemini",
+			env: getEnvValue("GOOGLE_GEMINI_API_KEY") ?? getEnvValue("GOOGLE_API_KEY"),
+		};
+	return undefined;
+})();
 
 // Core Features
 buildTimeFeatures.DATABASE_ENABLED = hasEnv("DATABASE_URL");
@@ -119,9 +155,13 @@ buildTimeFeatures.PWA_ENABLED = !envIsTrue("DISABLE_PWA");
 buildTimeFeatures.DEVTOOLS_ENABLED = envIsTrue("ENABLE_DEVTOOLS");
 buildTimeFeatures.DEVTOOLS_FONT_SELECTOR_ENABLED = buildTimeFeatures.DEVTOOLS_ENABLED;
 
+buildTimeFeatures.DEVTOOLS_REACT_GRAB_ENABLED =
+	buildTimeFeatures.DEVTOOLS_ENABLED && !!preferredAiProvider && envIsTrue("ENABLE_REACT_GRAB");
+
 // UI / Theme
 buildTimeFeatures.LIGHT_MODE_ENABLED = !envIsTrue("DISABLE_LIGHT_MODE");
 buildTimeFeatures.DARK_MODE_ENABLED = !envIsTrue("DISABLE_DARK_MODE");
+buildTimeFeatures.HAPTICS_ENABLED = !envIsTrue("DISABLE_HAPTICS");
 
 // Authentication
 // Better Auth can also derive its secret from APP_SECRET
@@ -250,8 +290,10 @@ buildTimeFeatures.CONSENT_MANAGER_ENABLED =
 	!envIsTrue("DISABLE_CONSENT_MANAGER");
 
 // Cloudflare Turnstile (CAPTCHA)
-buildTimeFeatures.TURNSTILE_ENABLED =
-	hasEnv("NEXT_PUBLIC_TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY");
+buildTimeFeatures.TURNSTILE_ENABLED = hasEnv(
+	"NEXT_PUBLIC_TURNSTILE_SITE_KEY",
+	"TURNSTILE_SECRET_KEY"
+);
 
 // Composite Features
 buildTimeFeatures.FILE_UPLOAD_ENABLED =

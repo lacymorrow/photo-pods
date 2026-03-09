@@ -1,5 +1,5 @@
-import type { Metadata } from "next";
 import { AlertCircle } from "lucide-react";
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import {
 	PageHeader,
@@ -10,9 +10,11 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { DataTable } from "@/components/ui/data-table/data-table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { constructMetadata } from "@/config/metadata";
+import { siteConfig } from "@/config/site-config";
 import { safeDbExecute } from "@/server/db";
 import { users } from "@/server/db/schema";
 import { getCollaboratorDetails } from "@/server/services/github/github-service";
+import { AddCollaboratorForm } from "./_components/add-collaborator-form";
 import { columns, type GitHubUserData } from "./_components/columns";
 import RepoInfo, { RepoInfoSkeleton } from "./_components/repo-info";
 import RepoMetrics, { RepoMetricsSkeleton } from "./_components/repo-metrics";
@@ -75,12 +77,14 @@ async function GitHubUsersTableContent() {
 				return {
 					...user,
 					githubDetails: null,
+					isOwner: false,
 				};
 			}
 			const details = await getCollaboratorDetails(user.githubUsername);
 			return {
 				...user,
 				githubDetails: details,
+				isOwner: user.githubUsername === siteConfig.repo.owner,
 			};
 		})
 	);
@@ -120,9 +124,14 @@ export default function GitHubUsersPage() {
 			</div>
 
 			{/* GitHub Users Section */}
-			<div className="mb-6">
-				<h2 className="text-xl font-semibold tracking-tight">Repository Collaborators</h2>
-				<p className="text-sm text-muted-foreground">Users with access to the GitHub repository.</p>
+			<div className="mb-6 flex items-end justify-between gap-4">
+				<div>
+					<h2 className="text-xl font-semibold tracking-tight">Repository Collaborators</h2>
+					<p className="text-sm text-muted-foreground">
+						Users with access to the GitHub repository.
+					</p>
+				</div>
+				<AddCollaboratorForm />
 			</div>
 
 			<Suspense fallback={<GitHubUsersTableSkeleton />}>

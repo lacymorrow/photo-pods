@@ -12,11 +12,12 @@ import {
 } from "@/components/primitives/page-header";
 import { Badge } from "@/components/ui/badge";
 import { constructMetadata } from "@/config/metadata";
-import { useDashboardData } from "./_hooks/use-dashboard-data";
+import { getDashboardData } from "./_hooks/use-dashboard-data";
 
 export const metadata: Metadata = constructMetadata({
 	title: "Dashboard",
-	description: "View your project overview, recent activity, and quick actions from your personalized dashboard.",
+	description:
+		"View your project overview, recent activity, and quick actions from your personalized dashboard.",
 });
 
 export default async function DashboardPage() {
@@ -28,7 +29,7 @@ export default async function DashboardPage() {
 		hasVercelConnection,
 		isCustomer,
 		isSubscribed,
-	} = await useDashboardData();
+	} = await getDashboardData();
 
 	return (
 		<div className="container mx-auto py-6 space-y-4">
@@ -70,7 +71,13 @@ export default async function DashboardPage() {
 							Check out what's happening with your projects
 						</PageHeaderDescription>
 					</div>
-					<DownloadSection isCustomer={isCustomer || isUserAdmin} />
+					<DownloadSection
+						isAuthenticated={!!session.user?.id}
+						isCustomer={isCustomer || isUserAdmin}
+						hasGitHubConnection={hasGitHubConnection}
+						githubUsername={githubUsername}
+						hasVercelConnection={hasVercelConnection}
+					/>
 				</div>
 			</PageHeader>
 

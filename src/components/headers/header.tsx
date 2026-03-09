@@ -5,8 +5,8 @@ import { useWindowScroll } from "@uidotdev/usehooks";
 import { cva } from "class-variance-authority";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSession } from "next-auth/react";
-import { useState, useEffect } from "react";
 import type React from "react";
+
 import { Icon } from "@/components/assets/icon";
 import { LoginButton } from "@/components/buttons/sign-in-button";
 import { SearchAi } from "@/components/modules/search/search-ai";
@@ -16,12 +16,7 @@ import { Link } from "@/components/primitives/link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ThemeToggle } from "@/components/ui/shipkit/theme";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { NavLink } from "@/config/navigation";
 import { defaultNavLinks as navigationDefaultNavLinks } from "@/config/navigation";
 import { routes } from "@/config/routes";
@@ -100,9 +95,9 @@ export const Header: React.FC<HeaderProps> = ({
 	const isLoggedIn = !!session?.user || !!user;
 	const scrollY = typeof y === "number" ? y : 0;
 	const isOpaque =
-		variant === "floating" &&
-		typeof opaqueOnScroll === "number" &&
-		scrollY > opaqueOnScroll;
+		variant === "floating" && typeof opaqueOnScroll === "number" && scrollY > opaqueOnScroll;
+
+	// console.log("Header scroll:", { scrollY, isOpaque, variant, opaqueOnScroll });
 
 	return (
 		<header
@@ -112,8 +107,8 @@ export const Header: React.FC<HeaderProps> = ({
 				variant === "floating" && isOpaque && styles.opaque,
 				variant === "floating" &&
 					isOpaque &&
-					"-top-[12px] [--background:#fafafc70] dark:[--background:#1c1c2270]",
-				className,
+					"-top-[12px] [--header-background:#fafafc70] dark:[--header-background:#1c1c2270]",
+				className
 			)}
 		>
 			{variant === "floating" && <div className="h-[12px] w-full" />}
@@ -122,33 +117,26 @@ export const Header: React.FC<HeaderProps> = ({
 					"container",
 					isLogoOnly
 						? "flex items-center justify-center gap-md"
-						: "flex items-center justify-between gap-md",
+						: "flex items-center justify-between gap-md"
 				)}
 			>
 				<div
 					className={cn(
 						"flex items-center gap-2 md:gap-4 shrink-0",
-						isLogoOnly ? "justify-center" : "justify-start",
+						isLogoOnly ? "justify-center" : "justify-start"
 					)}
 				>
 					{!isLogoOnly && (
 						<Sheet>
 							<SheetTrigger asChild>
-								<Button
-									variant="outline"
-									size="icon"
-									className="shrink-0 md:hidden"
-								>
+								<Button variant="outline" size="icon" className="shrink-0 md:hidden">
 									<HamburgerMenuIcon className="h-5 w-5" />
 									<span className="sr-only">Toggle navigation menu</span>
 								</Button>
 							</SheetTrigger>
 							<SheetContent side="left">
 								<nav className="grid gap-6 font-medium">
-									<Link
-										href={logoHref}
-										className="flex items-center gap-2 text-lg font-semibold"
-									>
+									<Link href={logoHref} className="flex items-center gap-2 text-lg font-semibold">
 										{logoIcon}
 										<span className="sr-only">{logoText}</span>
 									</Link>
@@ -160,10 +148,7 @@ export const Header: React.FC<HeaderProps> = ({
 										/>
 									)}
 									{searchVariant === "ai" && (
-										<SearchAi
-											buttonText={searchPlaceholder}
-											className="w-full"
-										/>
+										<SearchAi buttonText={searchPlaceholder} className="w-full" />
 									)}
 									{navLinks.map((link) => (
 										<Link
@@ -171,7 +156,7 @@ export const Header: React.FC<HeaderProps> = ({
 											href={link.href}
 											className={cn(
 												"text-muted-foreground hover:text-foreground",
-												link.isCurrent ? "text-foreground" : "",
+												link.isCurrent ? "text-foreground" : ""
 											)}
 										>
 											{link.label}
@@ -183,7 +168,7 @@ export const Header: React.FC<HeaderProps> = ({
 												href={routes.launch}
 												className={cn(
 													buttonVariants({ variant: "default" }),
-													"w-full justify-center",
+													"w-full justify-center"
 												)}
 											>
 												{`Get ${siteConfig.title}`}
@@ -192,7 +177,7 @@ export const Header: React.FC<HeaderProps> = ({
 												href={signInRedirectUrl}
 												className={cn(
 													buttonVariants({ variant: "ghost" }),
-													"w-full justify-center",
+													"w-full justify-center"
 												)}
 											>
 												Login
@@ -202,18 +187,10 @@ export const Header: React.FC<HeaderProps> = ({
 									{isLoggedIn && (
 										<>
 											<Link
-												href={routes.docs}
-												className={cn(
-													"text-muted-foreground hover:text-foreground",
-												)}
-											>
-												Documentation
-											</Link>
-											<Link
 												href={routes.app.dashboard}
 												className={cn(
 													buttonVariants({ variant: "default" }),
-													"w-full justify-center",
+													"w-full justify-center"
 												)}
 											>
 												Dashboard
@@ -234,24 +211,13 @@ export const Header: React.FC<HeaderProps> = ({
 					</Link>
 
 					<div className="hidden items-center gap-md text-sm md:flex">
-						{isLoggedIn && (
-							<Link
-								key={routes.docs}
-								href={routes.docs}
-								className={cn(
-									"text-muted-foreground transition-colors hover:text-foreground",
-								)}
-							>
-								Documentation
-							</Link>
-						)}
 						{navLinks.map((link) => (
 							<Link
 								key={`${link.href}-${link.label}`}
 								href={link.href}
 								className={cn(
 									"transition-colors hover:text-foreground",
-									link.isCurrent ? "text-foreground" : "text-muted-foreground",
+									link.isCurrent ? "text-foreground" : "text-muted-foreground"
 								)}
 							>
 								{link.label}
@@ -280,13 +246,7 @@ export const Header: React.FC<HeaderProps> = ({
 								/>
 							)}
 
-							{!isLoggedIn && (
-								<ThemeToggle
-									variant="ghost"
-									size="icon"
-									className="rounded-full"
-								/>
-							)}
+							{!isLoggedIn && <ThemeToggle variant="ghost" size="icon" className="rounded-full" />}
 
 							<UserMenu user={user} />
 
@@ -313,9 +273,7 @@ export const Header: React.FC<HeaderProps> = ({
 															sideOffset={3}
 															className="-mt-3 select-none border-none bg-transparent p-0 text-xs text-muted-foreground shadow-none data-[state=delayed-open]:animate-fadeDown"
 														>
-															<LoginButton className="hover:text-foreground">
-																or Login
-															</LoginButton>
+															<LoginButton className="hover:text-foreground">or Login</LoginButton>
 														</TooltipContent>
 													</Tooltip>
 												</TooltipProvider>
@@ -328,10 +286,7 @@ export const Header: React.FC<HeaderProps> = ({
 												exit={{ opacity: 0, scale: 0.9 }}
 												transition={{ duration: 0.1 }}
 											>
-												<LoginButton
-													variant="outline"
-													nextUrl={routes.app.dashboard}
-												>
+												<LoginButton variant="outline" nextUrl={routes.app.dashboard}>
 													Dashboard
 												</LoginButton>
 											</motion.div>

@@ -49,10 +49,12 @@ export function OnboardingCheck({
 		}
 	}, [hasPurchased, forceEnabled, userId, onboardingState]);
 
-	// Allow admins (or forced contexts) to bypass feature-flag gating so they can run onboarding.
+	// Onboarding requires both Vercel and GitHub integrations to be configured.
+	// Without both, the wizard steps can't function — hide it regardless of admin status.
 	if (
-		!forceEnabled &&
-		(!env.NEXT_PUBLIC_FEATURE_VERCEL_INTEGRATION_ENABLED || !env.NEXT_PUBLIC_FEATURE_GITHUB_API_ENABLED)
+		!env.NEXT_PUBLIC_FEATURE_VERCEL_INTEGRATION_ENABLED ||
+		!env.NEXT_PUBLIC_FEATURE_GITHUB_API_ENABLED ||
+		!env.NEXT_PUBLIC_FEATURE_DATABASE_ENABLED
 	) {
 		return null;
 	}
@@ -100,7 +102,9 @@ export function RestartOnboardingButton({
 		if (user?.id) {
 			try {
 				localStorage.removeItem(`feature_onboarding-${user.id}`);
-			} catch (e) { console.error("Failed to remove onboarding state from localStorage:", e); }
+			} catch (e) {
+				console.error("Failed to remove onboarding state from localStorage:", e);
+			}
 		}
 
 		// Reset the onboarding state to initial values
@@ -115,6 +119,15 @@ export function RestartOnboardingButton({
 		});
 		window?.location?.reload();
 	};
+
+	// Hide the button unless all required integrations are enabled (regardless of forceVisible).
+	if (
+		!env.NEXT_PUBLIC_FEATURE_VERCEL_INTEGRATION_ENABLED ||
+		!env.NEXT_PUBLIC_FEATURE_GITHUB_API_ENABLED ||
+		!env.NEXT_PUBLIC_FEATURE_DATABASE_ENABLED
+	) {
+		return null;
+	}
 
 	// Only show the button if onboarding has been completed before,
 	// unless forceVisible is enabled (e.g., for admins to start onboarding).
