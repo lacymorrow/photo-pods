@@ -8,7 +8,7 @@ Everything you need to get a Shipkit downstream project fully operational.
 
 Automatically opens PRs when the upstream Shipkit repo is updated.
 
-- **Install:** <https://github.com/apps/pull>
+- **Install:** [https://github.com/apps/pull](https://github.com/apps/pull)
 - **Grant access** to your fork/downstream repo
 - Config is already included at `.github/pull.yml` — no additional setup needed
 - [Documentation](https://github.com/wei/pull)

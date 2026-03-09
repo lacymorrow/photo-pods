@@ -4,13 +4,20 @@ import { Button } from "@/components/ui/button";
 import { PodGrid } from "@/components/pods/pod-grid";
 import { getUserPods } from "@/server/actions/pods";
 
+export const dynamic = "force-dynamic";
+
 export const metadata = {
 	title: "My Pods",
 	description: "Your shared photo collections",
 };
 
 export default async function PodsPage() {
-	const pods = await getUserPods();
+	let pods: Awaited<ReturnType<typeof getUserPods>> = [];
+	try {
+		pods = await getUserPods();
+	} catch {
+		// Not authenticated — will show empty state
+	}
 
 	return (
 		<div className="container max-w-6xl py-8">
