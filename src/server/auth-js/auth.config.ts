@@ -20,6 +20,7 @@ import type { User } from "@/types/user";
  * @see https://next-auth.js.org/configuration/options
  */
 export const authOptions: NextAuthConfig = {
+	trustHost: true,
 	debug: process.env.DEBUG_AUTH === "true",
 	providers,
 	pages: {
