@@ -327,6 +327,36 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
 		url = result.url;
 	}
 
+	// Extract EXIF data
+	let exifData: Record<string, unknown> | null = null;
+	try {
+		const exifr = await import("exifr");
+		const buffer = await file.arrayBuffer();
+		const raw = await exifr.default.parse(Buffer.from(buffer), {
+			pick: [
+				"Make", "Model", "LensModel",
+				"FNumber", "ExposureTime", "ISO", "FocalLength",
+				"DateTimeOriginal", "GPSLatitude", "GPSLongitude",
+				"ImageWidth", "ImageHeight",
+			],
+		});
+		if (raw && typeof raw === "object") {
+			exifData = {};
+			if (raw.Make) exifData.make = String(raw.Make);
+			if (raw.Model) exifData.model = String(raw.Model);
+			if (raw.LensModel) exifData.lens = String(raw.LensModel);
+			if (raw.FNumber) exifData.aperture = Number(raw.FNumber);
+			if (raw.ExposureTime) exifData.shutterSpeed = Number(raw.ExposureTime);
+			if (raw.ISO) exifData.iso = Number(raw.ISO);
+			if (raw.FocalLength) exifData.focalLength = Number(raw.FocalLength);
+			if (raw.DateTimeOriginal) exifData.dateTaken = new Date(raw.DateTimeOriginal).toISOString();
+			if (raw.ImageWidth) exifData.width = Number(raw.ImageWidth);
+			if (raw.ImageHeight) exifData.height = Number(raw.ImageHeight);
+		}
+	} catch {
+		// EXIF extraction failed — continue without it
+	}
+
 	const [photo] = await database
 		.insert(podPhotos)
 		.values({
@@ -336,6 +366,7 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
 			mimeType: file.type,
 			size: file.size,
 			caption: (formData.get("caption") as string) ?? null,
+			exifData,
 		})
 		.returning();
 
