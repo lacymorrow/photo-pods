@@ -5,3 +5,4 @@ export { PhotoUpload } from "./photo-upload";
 export { MemberList } from "./member-list";
 export { InviteLink } from "./invite-link";
 export { CreatePodForm } from "./create-pod-form";
+export { DownloadAllButton } from "./download-all-button";

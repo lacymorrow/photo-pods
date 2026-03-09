@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { DownloadAllButton } from "@/components/pods/download-all-button";
 import { InviteLink } from "@/components/pods/invite-link";
 import { MemberList } from "@/components/pods/member-list";
 import { PhotoGrid } from "@/components/pods/photo-grid";
@@ -54,14 +55,20 @@ export default async function PodDetailPage({ params }: Props) {
 						</span>
 					</div>
 				</div>
-				{isOwner && (
-					<Button variant="outline" size="sm" asChild>
-						<Link href={`/pods/${podId}/settings`}>
-							<Settings className="h-4 w-4 mr-1" />
-							Settings
-						</Link>
-					</Button>
-				)}
+				<div className="flex items-center gap-2">
+					<DownloadAllButton
+						podName={pod.name}
+						photos={photos.map((p) => ({ url: p.url, caption: p.caption }))}
+					/>
+					{isOwner && (
+						<Button variant="outline" size="sm" asChild>
+							<Link href={`/pods/${podId}/settings`}>
+								<Settings className="h-4 w-4 mr-1" />
+								Settings
+							</Link>
+						</Button>
+					)}
+				</div>
 			</div>
 
 			{/* Upload zone */}
