@@ -5,67 +5,41 @@ import { PageTracker } from "react-page-tracker";
 import { KitProvider } from "@/components/providers/kit-provider";
 import { TeamProvider } from "@/components/providers/team-provider";
 import { ThemeProvider } from "@/components/ui/shipkit/theme";
-import { logger } from "@/lib/logger";
-import { auth } from "@/server/auth";
-import { teamService } from "@/server/services/team-service";
 
 /**
- * Root layout component that wraps the entire application
- * Uses KitProvider to manage all core providers
+ * Root layout component that wraps the entire application.
+ *
+ * This component is intentionally synchronous and free of `auth()` / cookie
+ * reads so that Next.js can statically render the root shell. Pages or nested
+ * layouts that need the server session should call `auth()` themselves.
+ *
+ * `KitProvider` passes `session={null}` to `SessionProvider`, which will
+ * client-fetch `/api/auth/session` on mount. Team data is loaded in the
+ * dashboard layout where it's actually consumed.
  */
-export async function AppRouterLayout({
-	children,
-	themeProvider: ThemeProviderWrapper = ThemeProvider,
+export function AppRouterLayout({
+  children,
+  themeProvider: ThemeProviderWrapper = ThemeProvider,
 }: {
-	children: ReactNode;
-	themeProvider?: typeof ThemeProvider;
+  children: ReactNode;
+  themeProvider?: typeof ThemeProvider;
 }) {
-	// Reuse the server session in the client SessionProvider to avoid
-	// an immediate follow-up session fetch after the initial render.
-	const session = await auth();
-	let userTeams = [{ id: "personal", name: "Personal" }];
+  return (
+    <ViewTransitions>
+      {/* PageTracker - Track page views */}
+      <PageTracker />
 
-	if (session?.user?.id && process.env.DATABASE_URL) {
-		try {
-			const teams = await teamService.getUserTeams(session.user.id);
-			if (teams && teams.length > 0) {
-				userTeams = teams.map((tm) => ({
-					id: tm.team.id,
-					name: tm.team.name,
-				}));
-			} else {
-				// Ensure at least one personal team exists
-				const personalTeam = await teamService.ensureOnePersonalTeam(session.user.id);
-				if (personalTeam?.id && personalTeam?.name) {
-					userTeams = [
-						{
-							id: personalTeam.id,
-							name: personalTeam.name,
-						},
-					];
-				}
-			}
-		} catch (error) {
-			logger.error("Failed to fetch user teams", {
-				error: error instanceof Error ? error.message : "Unknown error",
-				userId: session.user.id,
-			});
-		}
-	}
-	return (
-		<ViewTransitions>
-			{/* PageTracker - Track page views */}
-			<PageTracker />
-
-			{/* ThemeProvider should wrap providers that might need theme context */}
-			<ThemeProviderWrapper>
-				{/* KitProvider - Manage all core providers */}
-				<KitProvider session={session}>
-					<NuqsAdapter>
-						<TeamProvider initialTeams={userTeams}>{children}</TeamProvider>
-					</NuqsAdapter>
-				</KitProvider>
-			</ThemeProviderWrapper>
-		</ViewTransitions>
-	);
+      {/* ThemeProvider should wrap providers that might need theme context */}
+      <ThemeProviderWrapper>
+        {/* KitProvider - Manage all core providers (session fetched client-side) */}
+        <KitProvider session={null}>
+          <NuqsAdapter>
+            <TeamProvider initialTeams={[{ id: "personal", name: "Personal" }]}>
+              {children}
+            </TeamProvider>
+          </NuqsAdapter>
+        </KitProvider>
+      </ThemeProviderWrapper>
+    </ViewTransitions>
+  );
 }
