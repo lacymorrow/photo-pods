@@ -7,6 +7,10 @@ vi.mock("@/lib/blog", () => ({
 	getBlogPosts: vi.fn(),
 }));
 
+vi.mock("next/navigation", () => ({
+	notFound: vi.fn(),
+}));
+
 // Import after mocking
 import { GET } from "@/app/rss.xml/route";
 import { getBlogPosts } from "@/lib/blog";

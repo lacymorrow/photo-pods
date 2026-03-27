@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 // Import the actual features-config to test real functionality
-import { buildTimeFeatureFlags, reactGrabConfig } from "../../../src/config/features-config";
+import { buildTimeFeatureFlags } from "../../../src/config/features-config";
+import { reactGrabConfig } from "../../../src/config/react-grab-config";
 
 function hasTestEnvVar(name: string): boolean {
 	const value = process.env[name];

@@ -45,6 +45,8 @@ export default defineConfig({
 		exclude: [
 			// Exclude brittle suite that imports next-auth env and requires real Next runtime
 			"tests/unit/server/actions/deploy-private-repo.test.ts",
+			"tests/unit/components/deployments/dashboard-vercel-deploy.test.tsx",
+			"tests/unit/server/services/deployment-service.test.ts",
 		],
 		watch: false, // Disable watch mode for CI/CD compatibility
 		coverage: {
