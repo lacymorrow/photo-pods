@@ -4,7 +4,7 @@
   "homepage": "https://shipkit.io",
   "repository": {
     "type": "git",
-    "url": "https://github.com/lacymorrow/shipkit"
+    "url": "git+https://github.com/lacymorrow/shipkit.git"
   },
   "shipkit": {
     "bones": "0.2.1"
