@@ -135,15 +135,18 @@ export const stripExif = async (
  * Fast GPS presence check without re-encoding. Used by `finalizeUpload` to
  * verify that the client-side strip actually ran before we mark the media
  * ready. Reads metadata only — no pixel decode.
+ *
+ * Fails **closed** (LAC-2928): if `sharp` cannot parse the image, we cannot
+ * prove the absence of GPS, so we return `true` and let the caller reject the
+ * upload down the same path used for a real GPS hit. A malformed image with
+ * GPS in an unparsed segment must not slip through.
  */
 export const hasGpsExif = async (input: Buffer): Promise<boolean> => {
 	try {
 		const metadata = await sharp(input).metadata();
 		return exifHasGps(metadata.exif);
-	} catch {
-		// Unreadable/corrupt image — treat as "no GPS we can detect".
-		// finalizeUpload's caller will still fail loudly if the media is
-		// unusable at read time.
-		return false;
+	} catch (err) {
+		console.warn("[hasGpsExif] sharp parse failed, failing closed", err);
+		return true;
 	}
 };
