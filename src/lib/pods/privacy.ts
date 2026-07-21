@@ -2,19 +2,19 @@
  * @fileoverview Photopods privacy visual system.
  * Maps pod visibility values to accent color, icon, label and copy per LAC-2856.
  *
- * DB currently stores `public | private | invite-only`. Product/spec labels are
- * `public | private | group` — `invite-only` maps to `group` in the UI until the
- * backend rename lands (see LAC-2857).
+ * DB and UI both use `private | group | public` (LAC-2857 backend rename).
+ * The `invite-only` alias is kept in the DB→UI map for backward compatibility
+ * with pre-migration test fixtures.
  */
 
 import { Globe, Lock, Users, type LucideIcon } from "lucide-react";
 
-export type PodVisibilityDb = "public" | "private" | "invite-only";
+export type PodVisibilityDb = "public" | "private" | "group" | "invite-only";
 export type PodPrivacyKey = "public" | "private" | "group";
 
 export interface PrivacyMeta {
 	key: PodPrivacyKey;
-	dbValue: PodVisibilityDb;
+	dbValue: PodPrivacyKey;
 	label: string;
 	shortLabel: string;
 	description: string;
@@ -46,7 +46,7 @@ const meta: Record<PodPrivacyKey, PrivacyMeta> = {
 	},
 	group: {
 		key: "group",
-		dbValue: "invite-only",
+		dbValue: "group",
 		label: "Group",
 		shortLabel: "Group",
 		description: "Friends only. Share moments together.",
@@ -79,6 +79,7 @@ const meta: Record<PodPrivacyKey, PrivacyMeta> = {
 const dbToKey: Record<PodVisibilityDb, PodPrivacyKey> = {
 	public: "public",
 	private: "private",
+	group: "group",
 	"invite-only": "group",
 };
 

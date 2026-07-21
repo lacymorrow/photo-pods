@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreHorizontal, Shield, Eye, Camera, UserMinus } from "lucide-react";
+import { MoreHorizontal, Shield, User, UserMinus } from "lucide-react";
 import { useTransition } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -9,10 +9,9 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
-	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { removePodMember, updateMemberRole } from "@/server/actions/pods";
+import { removePodMember } from "@/server/actions/pods";
 
 interface Member {
 	userId: string;
@@ -20,7 +19,6 @@ interface Member {
 	user: {
 		id: string;
 		name?: string | null;
-		email?: string | null;
 		image?: string | null;
 	};
 }
@@ -34,8 +32,7 @@ interface MemberListProps {
 
 const roleIcons = {
 	owner: Shield,
-	contributor: Camera,
-	viewer: Eye,
+	member: User,
 };
 
 export const MemberList = ({
@@ -46,10 +43,6 @@ export const MemberList = ({
 }: MemberListProps) => {
 	const [isPending, startTransition] = useTransition();
 
-	const handleRoleChange = (userId: string, role: "contributor" | "viewer") => {
-		startTransition(() => updateMemberRole(podId, userId, role));
-	};
-
 	const handleRemove = (userId: string) => {
 		startTransition(() => removePodMember(podId, userId));
 	};
@@ -57,8 +50,8 @@ export const MemberList = ({
 	return (
 		<div className="space-y-2">
 			{members.map((member) => {
-				const RoleIcon = roleIcons[member.role as keyof typeof roleIcons] ?? Eye;
-				const initials = (member.user.name ?? member.user.email ?? "?")
+				const RoleIcon = roleIcons[member.role as keyof typeof roleIcons] ?? User;
+				const initials = (member.user.name ?? "?")
 					.slice(0, 2)
 					.toUpperCase();
 
@@ -74,7 +67,7 @@ export const MemberList = ({
 							</Avatar>
 							<div>
 								<p className="text-sm font-medium">
-									{member.user.name ?? member.user.email}
+									{member.user.name ?? "Member"}
 									{member.userId === currentUserId && (
 										<span className="text-muted-foreground ml-1">(you)</span>
 									)}
@@ -94,21 +87,6 @@ export const MemberList = ({
 										</Button>
 									</DropdownMenuTrigger>
 									<DropdownMenuContent align="end">
-										<DropdownMenuItem
-											onClick={() => handleRoleChange(member.userId, "contributor")}
-											disabled={isPending || member.role === "contributor"}
-										>
-											<Camera className="h-4 w-4 mr-2" />
-											Make Contributor
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											onClick={() => handleRoleChange(member.userId, "viewer")}
-											disabled={isPending || member.role === "viewer"}
-										>
-											<Eye className="h-4 w-4 mr-2" />
-											Make Viewer
-										</DropdownMenuItem>
-										<DropdownMenuSeparator />
 										<DropdownMenuItem
 											className="text-destructive"
 											onClick={() => handleRemove(member.userId)}

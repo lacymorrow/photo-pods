@@ -27,13 +27,14 @@ interface ExifData {
 
 interface Photo {
 	id: string;
-	url: string;
+	url: string | null;
 	thumbnailUrl?: string | null;
 	caption?: string | null;
 	exifData?: ExifData | null;
 	uploadedBy?: { name?: string | null; image?: string | null } | null;
 	createdAt: Date;
 	reactionCounts?: ReactionCounts;
+	viewerReaction?: string | null;
 	myReaction?: string | null;
 }
 
@@ -99,6 +100,8 @@ export const PhotoGrid = ({ photos, canDelete, currentUserId }: PhotoGridProps) 
 		<>
 			<div className="columns-2 sm:columns-3 lg:columns-4 gap-3 space-y-3">
 				{photos.map((photo, index) => {
+					const src = photo.thumbnailUrl ?? photo.url;
+					if (!src) return null;
 					const topReactions = photo.reactionCounts
 						? Object.entries(photo.reactionCounts)
 								.filter(([, n]) => n > 0)
@@ -114,7 +117,7 @@ export const PhotoGrid = ({ photos, canDelete, currentUserId }: PhotoGridProps) 
 							onClick={() => setSelectedIndex(index)}
 						>
 							<Image
-								src={photo.thumbnailUrl ?? photo.url}
+								src={src}
 								alt={photo.caption ?? "Photo"}
 								width={400}
 								height={300}
@@ -164,7 +167,7 @@ export const PhotoGrid = ({ photos, canDelete, currentUserId }: PhotoGridProps) 
 							}}
 						>
 							<Image
-								src={selectedPhoto.url}
+								src={selectedPhoto.url ?? selectedPhoto.thumbnailUrl ?? ""}
 								alt={selectedPhoto.caption ?? "Photo"}
 								width={1200}
 								height={800}
@@ -175,8 +178,10 @@ export const PhotoGrid = ({ photos, canDelete, currentUserId }: PhotoGridProps) 
 								<ReactionsTray
 									mediaId={selectedPhoto.id}
 									counts={selectedPhoto.reactionCounts ?? {}}
-									mine={selectedPhoto.myReaction ?? null}
-									onReact={(id, next) => reactToMedia(id, next)}
+									mine={selectedPhoto.viewerReaction ?? selectedPhoto.myReaction ?? null}
+									onReact={async (id, next) => {
+										await reactToMedia(id, next);
+									}}
 								/>
 								<div className="flex items-end justify-between gap-4">
 									<div className="min-w-0 flex-1">

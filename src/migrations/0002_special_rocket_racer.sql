@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "pod_media_report_unique_idx" ON "db_pod_media_report" USING btree ("media_id","reporter_id");

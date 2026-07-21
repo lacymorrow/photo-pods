@@ -8,6 +8,20 @@
       "when": 1773088110419,
       "tag": "0000_puzzling_sally_floyd",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784640768691,
+      "tag": "0001_groovy_zarda",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784654709807,
+      "tag": "0002_special_rocket_racer",
+      "breakpoints": true
     }
   ]
 }

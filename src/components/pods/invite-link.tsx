@@ -11,13 +11,6 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
 import { createInviteLink } from "@/server/actions/pods";
 
 interface InviteLinkProps {
@@ -25,15 +18,17 @@ interface InviteLinkProps {
 }
 
 export const InviteLink = ({ podId }: InviteLinkProps) => {
-	const [role, setRole] = useState<"contributor" | "viewer">("viewer");
 	const [link, setLink] = useState<string | null>(null);
+	const [shortCode, setShortCode] = useState<string | null>(null);
 	const [copied, setCopied] = useState(false);
 	const [isPending, startTransition] = useTransition();
 	const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
 
 	const handleGenerate = () => {
 		startTransition(async () => {
-			const { token } = await createInviteLink(podId, role);
+			const invite = await createInviteLink(podId);
+			const { token } = invite;
+			setShortCode(invite.shortCode ?? null);
 			const url = `${window.location.origin}/pods/invite/${token}`;
 			setLink(url);
 			// Pre-generate QR code
@@ -67,21 +62,10 @@ export const InviteLink = ({ podId }: InviteLinkProps) => {
 
 	return (
 		<div className="space-y-3">
-			<div className="flex gap-2">
-				<Select value={role} onValueChange={(v) => setRole(v as typeof role)}>
-					<SelectTrigger className="w-[140px]">
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="viewer">Viewer</SelectItem>
-						<SelectItem value="contributor">Contributor</SelectItem>
-					</SelectContent>
-				</Select>
-				<Button onClick={handleGenerate} disabled={isPending} variant="outline">
-					<Link className="h-4 w-4 mr-1" />
-					Generate Link
-				</Button>
-			</div>
+			<Button onClick={handleGenerate} disabled={isPending} variant="outline">
+				<Link className="h-4 w-4 mr-1" />
+				Generate Invite
+			</Button>
 
 			{link && (
 				<div className="space-y-2">
@@ -95,6 +79,12 @@ export const InviteLink = ({ podId }: InviteLinkProps) => {
 							)}
 						</Button>
 					</div>
+
+					{shortCode && (
+						<p className="text-xs text-muted-foreground">
+							Or use the code <span className="font-mono font-semibold">{shortCode}</span>.
+						</p>
+					)}
 
 					{qrDataUrl && (
 						<Dialog>
@@ -116,7 +106,7 @@ export const InviteLink = ({ podId }: InviteLinkProps) => {
 										className="w-64 h-64 rounded-lg"
 									/>
 									<p className="text-xs text-muted-foreground text-center max-w-xs">
-										Scan this code to join the pod as a {role}.
+										Scan to join the pod.
 									</p>
 									<Button variant="outline" size="sm" onClick={handleDownloadQr}>
 										<Download className="h-4 w-4 mr-2" />

@@ -24,7 +24,7 @@ interface PodGridProps {
 		role: string;
 		photoCount?: number;
 		updatedAt?: Date | string | null;
-		latestPhoto?: { url: string; thumbnailUrl?: string | null } | null;
+		latestPhoto?: { url?: string | null; thumbnailUrl?: string | null } | null;
 	}>;
 	onCreate?: () => void;
 }

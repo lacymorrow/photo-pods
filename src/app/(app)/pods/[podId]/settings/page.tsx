@@ -38,7 +38,7 @@ export default function PodSettingsPage() {
 			await updatePod(params.podId, {
 				name: fd.get("name") as string,
 				description: (fd.get("description") as string) || undefined,
-				visibility: fd.get("visibility") as "public" | "private" | "invite-only",
+				visibility: fd.get("visibility") as "public" | "private" | "group",
 			});
 			router.push(`/pods/${params.podId}`);
 		});
@@ -82,8 +82,8 @@ export default function PodSettingsPage() {
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
-									<SelectItem value="invite-only">Invite Only</SelectItem>
 									<SelectItem value="private">Private</SelectItem>
+									<SelectItem value="group">Group</SelectItem>
 									<SelectItem value="public">Public</SelectItem>
 								</SelectContent>
 							</Select>
