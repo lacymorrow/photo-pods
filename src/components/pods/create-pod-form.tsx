@@ -31,7 +31,7 @@ export const CreatePodForm = () => {
 				const pod = await createPod({
 					name: formData.get("name") as string,
 					description: (formData.get("description") as string) || undefined,
-					visibility: (formData.get("visibility") as "public" | "private" | "invite-only") ?? "invite-only",
+					visibility: (formData.get("visibility") as "public" | "private" | "group") ?? "group",
 				});
 				router.push(`/pods/${pod.id}`);
 			} catch (err) {
@@ -65,18 +65,18 @@ export const CreatePodForm = () => {
 
 			<div className="space-y-2">
 				<Label htmlFor="visibility">Visibility</Label>
-				<Select name="visibility" defaultValue="invite-only">
+				<Select name="visibility" defaultValue="group">
 					<SelectTrigger>
 						<SelectValue />
 					</SelectTrigger>
 					<SelectContent>
-						<SelectItem value="invite-only">Invite Only</SelectItem>
 						<SelectItem value="private">Private</SelectItem>
+						<SelectItem value="group">Group</SelectItem>
 						<SelectItem value="public">Public</SelectItem>
 					</SelectContent>
 				</Select>
 				<p className="text-xs text-muted-foreground">
-					Invite-only: only people with an invite link can join. Private: visible to members only. Public: anyone can view.
+					Private: just you. Group: invite friends. Public: open topic dump anyone can view.
 				</p>
 			</div>
 

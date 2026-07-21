@@ -102,7 +102,7 @@ export const CircleInvite = ({
 		return new Promise<string | null>((resolve) => {
 			startTransition(async () => {
 				try {
-					const { token } = await createInviteLink(pod.id, "viewer", 72);
+					const { token } = await createInviteLink(pod.id, undefined, 72);
 					const url = `${window.location.origin}/pods/invite/${token}`;
 					setLink(url);
 					resolve(url);
@@ -124,9 +124,11 @@ export const CircleInvite = ({
 	const handleShare = async () => {
 		const url = await ensureLink();
 		if (!url) return;
-		if (typeof navigator !== "undefined" && "share" in navigator) {
+		const nav: Navigator | undefined =
+			typeof navigator !== "undefined" ? navigator : undefined;
+		if (nav && typeof nav.share === "function") {
 			try {
-				await navigator.share({
+				await nav.share({
 					title: `Join ${pod.name} on Photopods`,
 					text: `You've been invited to ${pod.name}`,
 					url,
@@ -134,8 +136,8 @@ export const CircleInvite = ({
 			} catch {
 				// user cancelled
 			}
-		} else {
-			await navigator.clipboard.writeText(url);
+		} else if (nav?.clipboard) {
+			await nav.clipboard.writeText(url);
 			setCopied(true);
 			setTimeout(() => setCopied(false), 1500);
 		}

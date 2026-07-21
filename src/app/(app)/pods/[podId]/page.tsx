@@ -32,12 +32,12 @@ export default async function PodDetailPage({ params }: Props) {
 
 	const { photos } = await getPodPhotos(podId);
 	const currentMember = pod.members.find((m) => m.userId === session.user.id);
-	const isOwner = currentMember?.role === "owner";
-	const canUpload = isOwner || currentMember?.role === "contributor";
+	const isOwner = pod.viewer.isOwner;
+	const canUpload = pod.viewer.canUpload;
 
 	const privacy = getPrivacyMeta(pod.visibility);
 	const PrivacyIcon = privacy.icon;
-	const canInvite = isOwner || currentMember?.role === "contributor";
+	const canInvite = pod.viewer.canInvite;
 	const contacts = pod.members
 		.filter((m) => m.userId !== session.user.id)
 		.map((m) => ({
@@ -79,7 +79,9 @@ export default async function PodDetailPage({ params }: Props) {
 					)}
 					<DownloadAllButton
 						podName={pod.name}
-						photos={photos.map((p) => ({ url: p.url, caption: p.caption }))}
+						photos={photos
+							.filter((p): p is typeof p & { url: string } => Boolean(p.url))
+							.map((p) => ({ url: p.url, caption: p.caption }))}
 					/>
 					{isOwner && (
 						<Button variant="outline" size="sm" asChild>
@@ -119,7 +121,7 @@ export default async function PodDetailPage({ params }: Props) {
 						currentUserId={session.user.id}
 					/>
 				</div>
-				{(isOwner || currentMember?.role === "contributor") && (
+				{canInvite && (
 					<div>
 						<h2 className="text-lg font-semibold mb-3">Invite People</h2>
 						<InviteLink podId={podId} />

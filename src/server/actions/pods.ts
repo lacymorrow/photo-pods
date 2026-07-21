@@ -1,20 +1,30 @@
 "use server";
 
 import crypto from "node:crypto";
-import { and, desc, eq, inArray, sql, count } from "drizzle-orm";
+
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+
 import { auth } from "@/server/auth";
 import { db } from "@/server/db";
 import {
-	pods,
-	podMembers,
-	podPhotos,
+	type MediaType,
+	type PodVisibility,
+	podFollows,
 	podInvites,
-	type Pod,
-	type PodMember,
-	type PodPhoto,
+	podMedia,
+	podMembers,
+	pods,
 } from "@/server/db/pods-schema";
-import { users } from "@/server/db/schema";
+import * as policy from "@/server/services/pod-policy";
+import * as reactions from "@/server/services/pod-reactions";
+import {
+	buildStorageKey,
+	isStorageConfigured,
+	loadStorageConfig,
+	presign,
+	publicUrlForKey,
+} from "@/server/services/pod-storage";
 
 // --- Helpers ---
 
@@ -29,23 +39,12 @@ const requireDb = () => {
 	return db;
 };
 
-const requirePodAccess = async (
-	podId: string,
-	requiredRoles?: ("owner" | "contributor" | "viewer")[],
-) => {
-	const user = await requireAuth();
-	const database = requireDb();
-
-	const member = await database.query.podMembers.findFirst({
-		where: and(eq(podMembers.podId, podId), eq(podMembers.userId, user.id)),
-	});
-
-	if (!member) throw new Error("Not a member of this pod");
-	if (requiredRoles && !requiredRoles.includes(member.role)) {
-		throw new Error("Insufficient permissions");
-	}
-
-	return { user, member };
+const viewerOf = async (): Promise<policy.Viewer> => {
+	const session = await auth();
+	return {
+		userId: session?.user?.id ?? null,
+		isAdmin: session?.user?.role === "admin",
+	};
 };
 
 // --- Pod CRUD ---
@@ -53,28 +52,38 @@ const requirePodAccess = async (
 export const createPod = async (data: {
 	name: string;
 	description?: string;
-	visibility?: "public" | "private" | "invite-only";
+	visibility?: PodVisibility;
 }) => {
 	const user = await requireAuth();
 	const database = requireDb();
 
-	const [pod] = await database
-		.insert(pods)
-		.values({
-			name: data.name,
-			description: data.description ?? null,
-			visibility: data.visibility ?? "invite-only",
-			createdById: user.id,
-		})
-		.returning();
+	const name = data.name?.trim();
+	if (!name) throw new Error("Pod name required");
+	if (name.length > 255) throw new Error("Pod name too long");
 
-	if (!pod) throw new Error("Failed to create pod");
+	const visibility: PodVisibility = data.visibility ?? "group";
 
-	// Add creator as owner
-	await database.insert(podMembers).values({
-		podId: pod.id,
-		userId: user.id,
-		role: "owner",
+	const pod = await database.transaction(async (tx) => {
+		const [row] = await tx
+			.insert(pods)
+			.values({
+				name,
+				description: data.description ?? null,
+				visibility,
+				createdById: user.id,
+				memberCount: 1,
+			})
+			.returning();
+
+		if (!row) throw new Error("Failed to create pod");
+
+		await tx.insert(podMembers).values({
+			podId: row.id,
+			userId: user.id,
+			role: "owner",
+		});
+
+		return row;
 	});
 
 	revalidatePath("/pods");
@@ -86,11 +95,12 @@ export const updatePod = async (
 	data: {
 		name?: string;
 		description?: string;
-		visibility?: "public" | "private" | "invite-only";
+		visibility?: PodVisibility;
 		coverPhotoUrl?: string;
 	},
 ) => {
-	await requirePodAccess(podId, ["owner"]);
+	const viewer = await viewerOf();
+	await policy.guardPod(podId, viewer, policy.isOwner, "edit");
 	const database = requireDb();
 
 	const [updated] = await database
@@ -105,47 +115,44 @@ export const updatePod = async (
 };
 
 export const deletePod = async (podId: string) => {
-	await requirePodAccess(podId, ["owner"]);
+	const viewer = await viewerOf();
+	await policy.guardPod(podId, viewer, policy.isOwner, "delete");
 	const database = requireDb();
 
 	await database.delete(pods).where(eq(pods.id, podId));
-
 	revalidatePath("/pods");
 };
 
 export const getPod = async (podId: string) => {
-	const user = await requireAuth();
-	const database = requireDb();
+	const viewer = await viewerOf();
+	const ctx = await policy.loadPolicyContext(podId, viewer);
+	if (!ctx) throw new Error("Pod not found");
+	if (!policy.canView(ctx)) throw new Error("Access denied");
 
+	const database = requireDb();
 	const pod = await database.query.pods.findFirst({
 		where: eq(pods.id, podId),
 		with: {
 			createdBy: true,
-			members: {
-				with: { user: true },
-			},
+			members: { with: { user: true } },
 		},
 	});
-
 	if (!pod) throw new Error("Pod not found");
-
-	// Check access
-	if (pod.visibility === "public") {
-		// Anyone can view public pods
-	} else {
-		const isMember = pod.members.some((m) => m.userId === user.id);
-		if (!isMember) throw new Error("Access denied");
-	}
-
-	const [photoCount] = await database
-		.select({ count: count() })
-		.from(podPhotos)
-		.where(eq(podPhotos.podId, podId));
 
 	return {
 		...pod,
-		photoCount: photoCount?.count ?? 0,
-		memberCount: pod.members.length,
+		memberCount: pod.memberCount ?? pod.members.length,
+		photoCount: pod.mediaCount ?? 0,
+		followerCount: pod.followerCount ?? 0,
+		viewer: {
+			userId: viewer.userId,
+			isMember: policy.isMember(ctx),
+			isOwner: policy.isOwner(ctx),
+			canUpload: policy.canUpload(ctx),
+			canReact: policy.canReact(ctx),
+			canInvite: policy.canInvite(ctx),
+			canModerate: policy.canModerate(ctx),
+		},
 	};
 };
 
@@ -159,9 +166,10 @@ export const getUserPods = async () => {
 			pod: {
 				with: {
 					members: true,
-					photos: {
+					media: {
 						limit: 1,
-						orderBy: [desc(podPhotos.createdAt)],
+						orderBy: [desc(podMedia.createdAt)],
+						where: eq(podMedia.status, "ready"),
 					},
 				},
 			},
@@ -169,161 +177,491 @@ export const getUserPods = async () => {
 		orderBy: [desc(podMembers.joinedAt)],
 	});
 
-	const podIds = memberships.map((m) => m.pod.id);
-	const photoCounts = new Map<string, number>();
-	if (podIds.length > 0) {
-		const rows = await database
-			.select({ podId: podPhotos.podId, count: count() })
-			.from(podPhotos)
-			.where(inArray(podPhotos.podId, podIds))
-			.groupBy(podPhotos.podId);
-		for (const row of rows) photoCounts.set(row.podId, Number(row.count));
-	}
-
 	return memberships.map((m) => ({
 		...m.pod,
 		role: m.role,
-		memberCount: m.pod.members.length,
-		photoCount: photoCounts.get(m.pod.id) ?? 0,
-		latestPhoto: m.pod.photos[0] ?? null,
+		memberCount: m.pod.memberCount ?? m.pod.members.length,
+		photoCount: m.pod.mediaCount ?? 0,
+		latestPhoto: m.pod.media[0] ?? null,
 	}));
+};
+
+// --- Discovery (public pods) ---
+
+export const listPublicPods = async (options?: {
+	limit?: number;
+	cursor?: string;
+}) => {
+	const database = requireDb();
+	const limit = Math.min(Math.max(options?.limit ?? 24, 1), 100);
+	const rows = await database
+		.select({
+			id: pods.id,
+			name: pods.name,
+			description: pods.description,
+			coverPhotoUrl: pods.coverPhotoUrl,
+			mediaCount: pods.mediaCount,
+			followerCount: pods.followerCount,
+			createdAt: pods.createdAt,
+		})
+		.from(pods)
+		.where(
+			and(
+				eq(pods.visibility, "public"),
+				sql`${pods.hiddenAt} IS NULL`,
+				options?.cursor
+					? sql`${pods.createdAt} < ${new Date(options.cursor)}`
+					: sql`true`,
+			),
+		)
+		.orderBy(desc(pods.createdAt))
+		.limit(limit + 1);
+
+	const hasMore = rows.length > limit;
+	if (hasMore) rows.pop();
+	return {
+		pods: rows,
+		nextCursor: hasMore ? rows[rows.length - 1]?.createdAt.toISOString() : null,
+	};
+};
+
+export const searchPublicPods = async (query: string, limit = 20) => {
+	const database = requireDb();
+	const trimmed = query.trim();
+	if (!trimmed) return { pods: [] as Awaited<ReturnType<typeof listPublicPods>>["pods"] };
+	const q = `%${trimmed.replace(/[%_]/g, "\\$&")}%`;
+	const rows = await database
+		.select({
+			id: pods.id,
+			name: pods.name,
+			description: pods.description,
+			coverPhotoUrl: pods.coverPhotoUrl,
+			mediaCount: pods.mediaCount,
+			followerCount: pods.followerCount,
+			createdAt: pods.createdAt,
+		})
+		.from(pods)
+		.where(
+			and(
+				eq(pods.visibility, "public"),
+				sql`${pods.hiddenAt} IS NULL`,
+				sql`(${pods.name} ILIKE ${q} OR ${pods.description} ILIKE ${q})`,
+			),
+		)
+		.orderBy(desc(pods.followerCount), desc(pods.createdAt))
+		.limit(Math.min(Math.max(limit, 1), 50));
+	return { pods: rows };
 };
 
 // --- Members ---
 
-export const addPodMember = async (
-	podId: string,
-	userId: string,
-	role: "contributor" | "viewer" = "viewer",
-) => {
-	await requirePodAccess(podId, ["owner"]);
-	const database = requireDb();
-
-	// Check not already a member
-	const existing = await database.query.podMembers.findFirst({
-		where: and(eq(podMembers.podId, podId), eq(podMembers.userId, userId)),
-	});
-	if (existing) throw new Error("User is already a member");
-
-	await database.insert(podMembers).values({ podId, userId, role });
-	revalidatePath(`/pods/${podId}`);
-};
-
 export const removePodMember = async (podId: string, userId: string) => {
-	const { member } = await requirePodAccess(podId, ["owner"]);
+	const viewer = await viewerOf();
+	const ctx = await policy.guardPod(podId, viewer, policy.isOwner, "remove members");
 	const database = requireDb();
 
-	// Can't remove yourself as owner
-	if (userId === member.userId && member.role === "owner") {
+	if (userId === ctx.pod.createdById) {
 		throw new Error("Cannot remove the pod owner");
 	}
 
-	await database
-		.delete(podMembers)
-		.where(and(eq(podMembers.podId, podId), eq(podMembers.userId, userId)));
+	await database.transaction(async (tx) => {
+		const removed = await tx
+			.delete(podMembers)
+			.where(and(eq(podMembers.podId, podId), eq(podMembers.userId, userId)))
+			.returning({ id: podMembers.id });
+		if (removed.length > 0) {
+			await tx
+				.update(pods)
+				.set({
+					memberCount: sql`GREATEST(${pods.memberCount} - 1, 0)`,
+					updatedAt: new Date(),
+				})
+				.where(eq(pods.id, podId));
+		}
+	});
 
 	revalidatePath(`/pods/${podId}`);
 };
 
-export const updateMemberRole = async (
-	podId: string,
-	userId: string,
-	role: "contributor" | "viewer",
-) => {
-	await requirePodAccess(podId, ["owner"]);
+export const leavePod = async (podId: string) => {
+	const user = await requireAuth();
 	const database = requireDb();
-
-	await database
-		.update(podMembers)
-		.set({ role })
-		.where(and(eq(podMembers.podId, podId), eq(podMembers.userId, userId)));
-
+	const membership = await database.query.podMembers.findFirst({
+		where: and(eq(podMembers.podId, podId), eq(podMembers.userId, user.id)),
+	});
+	if (!membership) throw new Error("Not a member");
+	if (membership.role === "owner") {
+		throw new Error("Owner cannot leave — delete the pod or transfer ownership");
+	}
+	await database.transaction(async (tx) => {
+		await tx
+			.delete(podMembers)
+			.where(and(eq(podMembers.podId, podId), eq(podMembers.userId, user.id)));
+		await tx
+			.update(pods)
+			.set({
+				memberCount: sql`GREATEST(${pods.memberCount} - 1, 0)`,
+				updatedAt: new Date(),
+			})
+			.where(eq(pods.id, podId));
+	});
 	revalidatePath(`/pods/${podId}`);
+	revalidatePath("/pods");
 };
 
 // --- Invites ---
 
+const randomShortCode = () =>
+	String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
+
 export const createInviteLink = async (
 	podId: string,
-	role: "contributor" | "viewer" = "viewer",
-	expiresInHours = 72,
+	_legacyRole?: unknown,
+	expiresInHours = 24 * 7,
 ) => {
-	const { user } = await requirePodAccess(podId, ["owner", "contributor"]);
+	const viewer = await viewerOf();
+	const ctx = await policy.guardPod(podId, viewer, policy.canInvite, "invite to");
 	const database = requireDb();
 
 	const token = crypto.randomBytes(32).toString("hex");
+	const shortCode = randomShortCode();
 	const expiresAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000);
 
 	await database.insert(podInvites).values({
 		podId,
-		invitedById: user.id,
+		invitedById: ctx.viewer.userId ?? "",
 		token,
-		role,
+		shortCode,
+		role: "member",
 		expiresAt,
 	});
 
-	return { token, expiresAt };
+	return { token, shortCode, expiresAt };
 };
 
-export const acceptInvite = async (token: string) => {
+export const acceptInvite = async (tokenOrCode: string) => {
 	const user = await requireAuth();
 	const database = requireDb();
 
+	const trimmed = tokenOrCode.trim();
 	const invite = await database.query.podInvites.findFirst({
-		where: eq(podInvites.token, token),
+		where:
+			trimmed.length <= 8
+				? eq(podInvites.shortCode, trimmed)
+				: eq(podInvites.token, trimmed),
 		with: { pod: true },
 	});
 
-	if (!invite) throw new Error("Invalid invite link");
-	if (invite.acceptedAt) throw new Error("Invite already used");
+	if (!invite) throw new Error("Invalid invite");
+	if (invite.revokedAt) throw new Error("Invite revoked");
 	if (invite.expiresAt && invite.expiresAt < new Date()) {
-		throw new Error("Invite has expired");
+		throw new Error("Invite expired");
+	}
+	if (invite.maxUses != null && invite.useCount >= invite.maxUses) {
+		throw new Error("Invite has been fully used");
 	}
 
-	// Check not already a member
 	const existing = await database.query.podMembers.findFirst({
 		where: and(
 			eq(podMembers.podId, invite.podId),
 			eq(podMembers.userId, user.id),
 		),
 	});
+	if (existing) return { pod: invite.pod, alreadyMember: true };
 
-	if (existing) {
-		return { pod: invite.pod, alreadyMember: true };
-	}
-
-	// Add member + mark invite used
-	await database.insert(podMembers).values({
-		podId: invite.podId,
-		userId: user.id,
-		role: invite.role,
+	await database.transaction(async (tx) => {
+		await tx.insert(podMembers).values({
+			podId: invite.podId,
+			userId: user.id,
+			role: "member",
+		});
+		await tx
+			.update(pods)
+			.set({
+				memberCount: sql`${pods.memberCount} + 1`,
+				updatedAt: new Date(),
+			})
+			.where(eq(pods.id, invite.podId));
+		await tx
+			.update(podInvites)
+			.set({
+				useCount: sql`${podInvites.useCount} + 1`,
+				acceptedAt: invite.acceptedAt ?? new Date(),
+			})
+			.where(eq(podInvites.id, invite.id));
 	});
-
-	await database
-		.update(podInvites)
-		.set({ acceptedAt: new Date() })
-		.where(eq(podInvites.id, invite.id));
 
 	revalidatePath(`/pods/${invite.podId}`);
 	return { pod: invite.pod, alreadyMember: false };
 };
 
-// --- Photos ---
+export const revokeInvite = async (podId: string, inviteId: string) => {
+	const viewer = await viewerOf();
+	await policy.guardPod(podId, viewer, policy.canInvite, "manage invites for");
+	const database = requireDb();
+	await database
+		.update(podInvites)
+		.set({ revokedAt: new Date() })
+		.where(and(eq(podInvites.id, inviteId), eq(podInvites.podId, podId)));
+};
 
+// --- Follows (public pods) ---
+
+export const followPod = async (podId: string) => {
+	const viewer = await viewerOf();
+	const ctx = await policy.guardPod(podId, viewer, policy.canFollow, "follow");
+	const database = requireDb();
+	if (!ctx.viewer.userId) throw new Error("Sign in required");
+
+	await database.transaction(async (tx) => {
+		const inserted = await tx
+			.insert(podFollows)
+			.values({ podId, userId: ctx.viewer.userId! })
+			.onConflictDoNothing({
+				target: [podFollows.podId, podFollows.userId],
+			})
+			.returning({ id: podFollows.id });
+		if (inserted.length > 0) {
+			await tx
+				.update(pods)
+				.set({ followerCount: sql`${pods.followerCount} + 1` })
+				.where(eq(pods.id, podId));
+		}
+	});
+	revalidatePath(`/pods/${podId}`);
+};
+
+export const unfollowPod = async (podId: string) => {
+	const user = await requireAuth();
+	const database = requireDb();
+	await database.transaction(async (tx) => {
+		const removed = await tx
+			.delete(podFollows)
+			.where(
+				and(eq(podFollows.podId, podId), eq(podFollows.userId, user.id)),
+			)
+			.returning({ id: podFollows.id });
+		if (removed.length > 0) {
+			await tx
+				.update(pods)
+				.set({ followerCount: sql`GREATEST(${pods.followerCount} - 1, 0)` })
+				.where(eq(pods.id, podId));
+		}
+	});
+	revalidatePath(`/pods/${podId}`);
+};
+
+// --- Media: presigned upload flow ---
+
+const PHOTO_MIMES = new Set([
+	"image/jpeg",
+	"image/png",
+	"image/webp",
+	"image/heic",
+	"image/heif",
+]);
+const VIDEO_MIMES = new Set([
+	"video/mp4",
+	"video/quicktime",
+	"video/webm",
+]);
+const MAX_PHOTO_BYTES = 50 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
+
+const extForMime = (mime: string): string => {
+	const map: Record<string, string> = {
+		"image/jpeg": "jpg",
+		"image/png": "png",
+		"image/webp": "webp",
+		"image/heic": "heic",
+		"image/heif": "heif",
+		"video/mp4": "mp4",
+		"video/quicktime": "mov",
+		"video/webm": "webm",
+	};
+	return map[mime] ?? "bin";
+};
+
+export interface PresignedUploadRequest {
+	podId: string;
+	filename: string;
+	contentType: string;
+	size: number;
+}
+
+export interface PresignedUploadResponse {
+	mediaId: string;
+	uploadUrl: string;
+	method: "PUT";
+	headers: Record<string, string>;
+	storageKey: string;
+	expiresInSeconds: number;
+	fallback?: {
+		reason: "storage_not_configured";
+		message: string;
+	};
+}
+
+/**
+ * Presigned direct-to-storage photo upload. Videos will follow the Stream
+ * direct-creator-upload flow once the Cloudflare account is provisioned
+ * (blocked on board spend approval — see LAC-2855 §4).
+ */
+export const requestPresignedUpload = async (
+	req: PresignedUploadRequest,
+): Promise<PresignedUploadResponse> => {
+	const viewer = await viewerOf();
+	const ctx = await policy.guardPod(req.podId, viewer, policy.canUpload, "upload to");
+	if (!ctx.viewer.userId) throw new Error("Sign in required");
+
+	const contentType = req.contentType.toLowerCase();
+	let mediaType: MediaType;
+	let maxBytes: number;
+	if (PHOTO_MIMES.has(contentType)) {
+		mediaType = "photo";
+		maxBytes = MAX_PHOTO_BYTES;
+	} else if (VIDEO_MIMES.has(contentType)) {
+		mediaType = "video";
+		maxBytes = MAX_VIDEO_BYTES;
+	} else {
+		throw new Error(`Unsupported content type: ${contentType}`);
+	}
+	if (req.size <= 0 || req.size > maxBytes) {
+		throw new Error(
+			`File size ${req.size} bytes exceeds max ${maxBytes} bytes for ${mediaType}`,
+		);
+	}
+
+	const database = requireDb();
+	const mediaId = crypto.randomUUID();
+	const storageKey = buildStorageKey(
+		req.podId,
+		mediaId,
+		mediaType,
+		extForMime(contentType),
+	);
+
+	await database.insert(podMedia).values({
+		id: mediaId,
+		podId: req.podId,
+		uploadedById: ctx.viewer.userId,
+		type: mediaType,
+		status: "processing",
+		storageKey,
+		size: req.size,
+		mimeType: contentType,
+	});
+
+	if (!isStorageConfigured()) {
+		return {
+			mediaId,
+			uploadUrl: "",
+			method: "PUT",
+			headers: {},
+			storageKey,
+			expiresInSeconds: 0,
+			fallback: {
+				reason: "storage_not_configured",
+				message:
+					"Object storage is not configured yet. Use uploadPhotoLegacy while R2 is being provisioned.",
+			},
+		};
+	}
+
+	const config = loadStorageConfig();
+	const expiresInSeconds = 60 * 15;
+	const uploadUrl = presign({
+		config,
+		method: "PUT",
+		key: storageKey,
+		contentType,
+		contentLength: req.size,
+		expiresInSeconds,
+	});
+
+	return {
+		mediaId,
+		uploadUrl,
+		method: "PUT",
+		headers: { "Content-Type": contentType },
+		storageKey,
+		expiresInSeconds,
+	};
+};
+
+/**
+ * Client callback after the presigned PUT succeeds. Marks the media
+ * `ready` and stores dimensions/duration if the client extracted them.
+ * (Server-side thumbnailing/EXIF stripping is the worker's job — LAC-2855 §3.)
+ */
+export const finalizeUpload = async (input: {
+	mediaId: string;
+	width?: number;
+	height?: number;
+	durationSeconds?: number;
+	caption?: string;
+}) => {
+	const viewer = await viewerOf();
+	if (!viewer.userId) throw new Error("Unauthorized");
+	const database = requireDb();
+
+	const media = await database.query.podMedia.findFirst({
+		where: eq(podMedia.id, input.mediaId),
+	});
+	if (!media) throw new Error("Media not found");
+	if (media.uploadedById !== viewer.userId) throw new Error("Not your upload");
+
+	const config = loadStorageConfig();
+	const publicUrl = media.storageKey
+		? publicUrlForKey(config, media.storageKey)
+		: null;
+
+	const [updated] = await database
+		.update(podMedia)
+		.set({
+			status: media.type === "video" ? "processing" : "ready",
+			width: input.width ?? media.width,
+			height: input.height ?? media.height,
+			durationSeconds: input.durationSeconds ?? media.durationSeconds,
+			caption: input.caption ?? media.caption,
+			url: publicUrl ?? media.url,
+			readyAt: media.type === "video" ? media.readyAt : new Date(),
+		})
+		.where(eq(podMedia.id, input.mediaId))
+		.returning();
+
+	await database
+		.update(pods)
+		.set({
+			mediaCount: sql`${pods.mediaCount} + 1`,
+			updatedAt: new Date(),
+		})
+		.where(eq(pods.id, media.podId));
+
+	revalidatePath(`/pods/${media.podId}`);
+	return updated;
+};
+
+// --- Media: legacy formData upload (Vercel Blob fallback) ---
+
+/**
+ * Kept for the pre-R2 development path so the existing UI keeps working. Not
+ * suitable for production per LAC-2855 §1 (Vercel serverless body caps at
+ * ~4.5 MB, blocking spec limits). Once R2 is provisioned, this deletes.
+ */
 export const uploadPhoto = async (podId: string, formData: FormData) => {
-	const { user } = await requirePodAccess(podId, ["owner", "contributor"]);
+	const viewer = await viewerOf();
+	const ctx = await policy.guardPod(podId, viewer, policy.canUpload, "upload to");
+	if (!ctx.viewer.userId) throw new Error("Sign in required");
 	const database = requireDb();
 
 	const file = formData.get("file") as File;
 	if (!file) throw new Error("No file provided");
-
-	// Validate file type
-	const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
-	if (!allowedTypes.includes(file.type)) {
+	const contentType = file.type.toLowerCase();
+	if (!PHOTO_MIMES.has(contentType)) {
 		throw new Error("Invalid file type. Allowed: JPEG, PNG, WebP, HEIC");
 	}
 
-	// Upload to Vercel Blob (primary) or S3 (fallback)
 	let url: string;
 	try {
 		const { put } = await import("@vercel/blob");
@@ -332,84 +670,70 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
 		});
 		url = blob.url;
 	} catch {
-		// Fall back to S3 if Vercel Blob isn't configured
 		const { uploadFile } = await import("@/server/services/file");
 		const result = await uploadFile(file as any);
 		url = result.url;
 	}
 
-	// Extract EXIF data
-	let exifData: Record<string, unknown> | null = null;
-	try {
-		const exifr = await import("exifr");
-		const buffer = await file.arrayBuffer();
-		const raw = await exifr.default.parse(Buffer.from(buffer), {
-			pick: [
-				"Make", "Model", "LensModel",
-				"FNumber", "ExposureTime", "ISO", "FocalLength",
-				"DateTimeOriginal", "GPSLatitude", "GPSLongitude",
-				"ImageWidth", "ImageHeight",
-			],
-		});
-		if (raw && typeof raw === "object") {
-			exifData = {};
-			if (raw.Make) exifData.make = String(raw.Make);
-			if (raw.Model) exifData.model = String(raw.Model);
-			if (raw.LensModel) exifData.lens = String(raw.LensModel);
-			if (raw.FNumber) exifData.aperture = Number(raw.FNumber);
-			if (raw.ExposureTime) exifData.shutterSpeed = Number(raw.ExposureTime);
-			if (raw.ISO) exifData.iso = Number(raw.ISO);
-			if (raw.FocalLength) exifData.focalLength = Number(raw.FocalLength);
-			if (raw.DateTimeOriginal) exifData.dateTaken = new Date(raw.DateTimeOriginal).toISOString();
-			if (raw.ImageWidth) exifData.width = Number(raw.ImageWidth);
-			if (raw.ImageHeight) exifData.height = Number(raw.ImageHeight);
-		}
-	} catch {
-		// EXIF extraction failed — continue without it
-	}
-
-	const [photo] = await database
-		.insert(podPhotos)
-		.values({
-			podId,
-			uploadedById: user.id,
-			url,
-			mimeType: file.type,
-			size: file.size,
-			caption: (formData.get("caption") as string) ?? null,
-			exifData,
-		})
-		.returning();
+	const mediaId = crypto.randomUUID();
+	const [row] = await database.transaction(async (tx) => {
+		const inserted = await tx
+			.insert(podMedia)
+			.values({
+				id: mediaId,
+				podId,
+				uploadedById: ctx.viewer.userId!,
+				type: "photo",
+				status: "ready",
+				url,
+				mimeType: contentType,
+				size: file.size,
+				caption: (formData.get("caption") as string) ?? null,
+				readyAt: new Date(),
+			})
+			.returning();
+		await tx
+			.update(pods)
+			.set({
+				mediaCount: sql`${pods.mediaCount} + 1`,
+				updatedAt: new Date(),
+			})
+			.where(eq(pods.id, podId));
+		return inserted;
+	});
 
 	revalidatePath(`/pods/${podId}`);
-	return photo;
+	return row;
 };
 
 export const deletePhoto = async (photoId: string) => {
 	const user = await requireAuth();
 	const database = requireDb();
 
-	const photo = await database.query.podPhotos.findFirst({
-		where: eq(podPhotos.id, photoId),
+	const media = await database.query.podMedia.findFirst({
+		where: eq(podMedia.id, photoId),
 	});
+	if (!media) throw new Error("Photo not found");
 
-	if (!photo) throw new Error("Photo not found");
-
-	// Must be photo uploader or pod owner
-	const member = await database.query.podMembers.findFirst({
-		where: and(
-			eq(podMembers.podId, photo.podId),
-			eq(podMembers.userId, user.id),
-		),
-	});
-
-	if (!member) throw new Error("Access denied");
-	if (photo.uploadedById !== user.id && member.role !== "owner") {
+	const viewer = { userId: user.id } satisfies policy.Viewer;
+	const ctx = await policy.loadPolicyContext(media.podId, viewer);
+	if (!ctx) throw new Error("Pod not found");
+	const isUploader = media.uploadedById === user.id;
+	if (!isUploader && !policy.canModerate(ctx)) {
 		throw new Error("Can only delete your own photos");
 	}
 
-	await database.delete(podPhotos).where(eq(podPhotos.id, photoId));
-	revalidatePath(`/pods/${photo.podId}`);
+	await database.transaction(async (tx) => {
+		await tx.delete(podMedia).where(eq(podMedia.id, photoId));
+		await tx
+			.update(pods)
+			.set({
+				mediaCount: sql`GREATEST(${pods.mediaCount} - 1, 0)`,
+				updatedAt: new Date(),
+			})
+			.where(eq(pods.id, media.podId));
+	});
+	revalidatePath(`/pods/${media.podId}`);
 };
 
 export const getPodPhotos = async (
@@ -417,54 +741,123 @@ export const getPodPhotos = async (
 	cursor?: string,
 	limit = 50,
 ) => {
-	await requirePodAccess(podId);
+	const viewer = await viewerOf();
+	const ctx = await policy.loadPolicyContext(podId, viewer);
+	if (!ctx || !policy.canView(ctx)) throw new Error("Access denied");
 	const database = requireDb();
 
-	const photos = await database.query.podPhotos.findMany({
-		where: eq(podPhotos.podId, podId),
+	const rows = await database.query.podMedia.findMany({
+		where: and(
+			eq(podMedia.podId, podId),
+			eq(podMedia.status, "ready"),
+			sql`${podMedia.hiddenAt} IS NULL`,
+		),
 		with: { uploadedBy: true },
-		orderBy: [desc(podPhotos.createdAt)],
+		orderBy: [desc(podMedia.createdAt)],
 		limit: limit + 1,
 		...(cursor ? { offset: Number.parseInt(cursor, 10) } : {}),
 	});
 
-	const hasMore = photos.length > limit;
-	if (hasMore) photos.pop();
+	const hasMore = rows.length > limit;
+	if (hasMore) rows.pop();
+
+	const mediaIds = rows.map((r) => r.id);
+	const counts = await reactions.getReactionCounts(mediaIds);
+	const own = viewer.userId
+		? await reactions.getViewerReactions(mediaIds, viewer.userId)
+		: {};
+
+	const photos = rows.map((row) => ({
+		...row,
+		reactionCounts: counts[row.id] ?? {},
+		viewerReaction: own[row.id] ?? null,
+	}));
 
 	return {
 		photos,
-		nextCursor: hasMore ? String((Number(cursor ?? "0")) + limit) : null,
+		nextCursor: hasMore ? String(Number(cursor ?? "0") + limit) : null,
 	};
 };
 
 // --- Reactions ---
-// Frontend-visible surface. The persistent `media_reactions` table + real
-// mutation land in the backend MVP task (LAC-2857). For now this validates
-// auth AND pod membership so the ACL gate exists even without persistence.
+
 export const reactToMedia = async (mediaId: string, reaction: string | null) => {
-	const user = await requireAuth();
+	const viewer = await viewerOf();
+	if (!viewer.userId) throw new Error("Unauthorized");
 	if (!mediaId) throw new Error("mediaId required");
-	if (reaction !== null && typeof reaction !== "string") {
-		throw new Error("Invalid reaction");
+
+	const media = await reactions.resolveMediaPod(mediaId);
+	if (!media) throw new Error("Media not found");
+
+	const ctx = await policy.loadPolicyContext(media.podId, viewer);
+	if (!ctx || !policy.canReact(ctx)) {
+		throw new Error("Not allowed to react to this media");
 	}
 
-	// TODO(LAC-2857): must gate by pod membership + read access. Fail-closed
-	// membership check below so an authenticated caller cannot react to a
-	// media id they can't see. Backend swap-in should preserve this contract.
+	const result = await reactions.setReaction(mediaId, viewer.userId, reaction);
+	revalidatePath(`/pods/${media.podId}`);
+	return { mediaId, reaction: result.reaction };
+};
+
+export const getReactorsForMedia = async (
+	mediaId: string,
+	reaction: string,
+) => {
+	const viewer = await viewerOf();
+	const media = await reactions.resolveMediaPod(mediaId);
+	if (!media) throw new Error("Media not found");
+
+	const ctx = await policy.loadPolicyContext(media.podId, viewer);
+	if (!ctx || !policy.canView(ctx)) throw new Error("Access denied");
+
+	// Spec §3.6: reactor identities visible only to members in group pods.
+	// Public pods show count only; private pods = owner sees own reactions.
+	if (ctx.pod.visibility === "public" && !policy.isMember(ctx)) return [];
+	if (ctx.pod.visibility === "group" && !policy.isMember(ctx)) return [];
+
+	return reactions.getReactors(mediaId, reaction);
+};
+
+// --- Reports ---
+
+export const reportMedia = async (
+	mediaId: string,
+	reason:
+		| "nudity_sexual"
+		| "violence"
+		| "harassment"
+		| "spam"
+		| "illegal"
+		| "other",
+	details?: string,
+) => {
+	const user = await requireAuth();
 	const database = requireDb();
-	const photo = await database.query.podPhotos.findFirst({
-		where: eq(podPhotos.id, mediaId),
-		columns: { id: true, podId: true },
-	});
-	if (!photo) throw new Error("Media not found");
+	const media = await reactions.resolveMediaPod(mediaId);
+	if (!media) throw new Error("Media not found");
 
-	const membership = await database.query.podMembers.findFirst({
-		where: and(
-			eq(podMembers.podId, photo.podId),
-			eq(podMembers.userId, user.id),
-		),
+	const { mediaReports } = await import("@/server/db/pods-schema");
+	await database.transaction(async (tx) => {
+		await tx.insert(mediaReports).values({
+			mediaId,
+			reporterId: user.id,
+			reason,
+			details: details ?? null,
+		});
+		await tx
+			.update(podMedia)
+			.set({ reportCount: sql`${podMedia.reportCount} + 1` })
+			.where(eq(podMedia.id, mediaId));
+		// Auto-hide at 3 pending reports as a conservative MVP guard.
+		// The full "3 confirmed" workflow (LAC-2854 §7) is a follow-up on the
+		// moderation queue.
+		await tx.execute(sql`
+			UPDATE ${podMedia}
+			SET hidden_at = NOW()
+			WHERE id = ${mediaId}
+				AND hidden_at IS NULL
+				AND report_count >= 3
+		`);
 	});
-	if (!membership) throw new Error("Access denied");
-
-	return { mediaId, reaction };
+	return { ok: true };
 };
