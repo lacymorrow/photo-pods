@@ -32,7 +32,7 @@ export interface Viewer {
 }
 
 export interface PolicyContext {
-	pod: Pick<Pod, "id" | "visibility" | "createdById" | "hiddenAt">;
+	pod: Pick<Pod, "id" | "visibility" | "createdById" | "hiddenAt" | "retainLocationExif">;
 	viewer: Viewer;
 	membership: Pick<PodMember, "role"> | null;
 }
@@ -58,6 +58,7 @@ export const loadPolicyContext = async (
 			visibility: true,
 			createdById: true,
 			hiddenAt: true,
+			retainLocationExif: true,
 		},
 	});
 	if (!pod) return null;

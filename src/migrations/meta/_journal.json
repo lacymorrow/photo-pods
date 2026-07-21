@@ -22,6 +22,20 @@
       "when": 1784654709807,
       "tag": "0002_special_rocket_racer",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784656236452,
+      "tag": "0003_lying_wind_dancer",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784668181338,
+      "tag": "0004_wakeful_kabuki",
+      "breakpoints": true
     }
   ]
 }
