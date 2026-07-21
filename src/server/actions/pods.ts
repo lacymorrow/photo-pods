@@ -28,6 +28,14 @@ import {
 
 // --- Helpers ---
 
+// Only these user columns are safe to leak into pod payloads. The full user row
+// includes password hashes and emails; NEVER select `user: true` in a pod query.
+const PUBLIC_USER_COLUMNS = {
+	id: true,
+	name: true,
+	image: true,
+} as const;
+
 const requireAuth = async () => {
 	const session = await auth();
 	if (!session?.user?.id) throw new Error("Unauthorized");
@@ -133,8 +141,10 @@ export const getPod = async (podId: string) => {
 	const pod = await database.query.pods.findFirst({
 		where: eq(pods.id, podId),
 		with: {
-			createdBy: true,
-			members: { with: { user: true } },
+			createdBy: { columns: PUBLIC_USER_COLUMNS },
+			members: {
+				with: { user: { columns: PUBLIC_USER_COLUMNS } },
+			},
 		},
 	});
 	if (!pod) throw new Error("Pod not found");
@@ -339,26 +349,72 @@ export const createInviteLink = async (
 	return { token, shortCode, expiresAt };
 };
 
-export const acceptInvite = async (tokenOrCode: string) => {
+// Simple in-memory sliding-window limiter for short-code acceptance. Best-effort
+// (per-process); a durable Redis-backed limiter is a follow-up (LAC-2859 §4).
+const SHORT_CODE_WINDOW_MS = 60 * 1000;
+const SHORT_CODE_MAX_ATTEMPTS = 5;
+const shortCodeAttempts = new Map<string, number[]>();
+
+const checkShortCodeRateLimit = (userId: string): void => {
+	const now = Date.now();
+	const cutoff = now - SHORT_CODE_WINDOW_MS;
+	const attempts = (shortCodeAttempts.get(userId) ?? []).filter((t) => t > cutoff);
+	if (attempts.length >= SHORT_CODE_MAX_ATTEMPTS) {
+		throw new Error("Too many invite attempts. Please wait a minute and try again.");
+	}
+	attempts.push(now);
+	shortCodeAttempts.set(userId, attempts);
+};
+
+export const acceptInvite = async (
+	tokenOrCode: string,
+	options?: { podId?: string },
+) => {
 	const user = await requireAuth();
 	const database = requireDb();
 
 	const trimmed = tokenOrCode.trim();
+	const isShortCode = trimmed.length <= 8;
+
+	// Short codes are 6 digits — enumerable if unbounded. Require the caller to
+	// supply the target podId (comes from the invite QR/link surface), so an
+	// attacker cannot brute-force codes across the platform. Long tokens are
+	// 64-hex secrets and stand on their own.
+	if (isShortCode) {
+		if (!options?.podId) {
+			throw new Error("Pod is required to accept a short code invite");
+		}
+		checkShortCodeRateLimit(user.id);
+	}
+
 	const invite = await database.query.podInvites.findFirst({
-		where:
-			trimmed.length <= 8
-				? eq(podInvites.shortCode, trimmed)
-				: eq(podInvites.token, trimmed),
-		with: { pod: true },
+		where: isShortCode
+			? and(
+					eq(podInvites.shortCode, trimmed),
+					eq(podInvites.podId, options!.podId!),
+				)
+			: eq(podInvites.token, trimmed),
+		with: {
+			pod: {
+				columns: {
+					id: true,
+					name: true,
+					description: true,
+					coverPhotoUrl: true,
+					visibility: true,
+					memberCount: true,
+					mediaCount: true,
+					followerCount: true,
+					createdAt: true,
+				},
+			},
+		},
 	});
 
 	if (!invite) throw new Error("Invalid invite");
 	if (invite.revokedAt) throw new Error("Invite revoked");
 	if (invite.expiresAt && invite.expiresAt < new Date()) {
 		throw new Error("Invite expired");
-	}
-	if (invite.maxUses != null && invite.useCount >= invite.maxUses) {
-		throw new Error("Invite has been fully used");
 	}
 
 	const existing = await database.query.podMembers.findFirst({
@@ -369,7 +425,27 @@ export const acceptInvite = async (tokenOrCode: string) => {
 	});
 	if (existing) return { pod: invite.pod, alreadyMember: true };
 
+	// Atomic maxUses consumption: the UPDATE only succeeds if a slot is free,
+	// closing the TOCTOU window where two concurrent accepts both saw useCount<max.
 	await database.transaction(async (tx) => {
+		const claimed = await tx
+			.update(podInvites)
+			.set({
+				useCount: sql`${podInvites.useCount} + 1`,
+				acceptedAt: invite.acceptedAt ?? new Date(),
+			})
+			.where(
+				and(
+					eq(podInvites.id, invite.id),
+					sql`${podInvites.revokedAt} IS NULL`,
+					sql`(${podInvites.expiresAt} IS NULL OR ${podInvites.expiresAt} > NOW())`,
+					sql`(${podInvites.maxUses} IS NULL OR ${podInvites.useCount} < ${podInvites.maxUses})`,
+				),
+			)
+			.returning({ id: podInvites.id });
+		if (claimed.length === 0) {
+			throw new Error("Invite has been fully used");
+		}
 		await tx.insert(podMembers).values({
 			podId: invite.podId,
 			userId: user.id,
@@ -382,13 +458,6 @@ export const acceptInvite = async (tokenOrCode: string) => {
 				updatedAt: new Date(),
 			})
 			.where(eq(pods.id, invite.podId));
-		await tx
-			.update(podInvites)
-			.set({
-				useCount: sql`${podInvites.useCount} + 1`,
-				acceptedAt: invite.acceptedAt ?? new Date(),
-			})
-			.where(eq(podInvites.id, invite.id));
 	});
 
 	revalidatePath(`/pods/${invite.podId}`);
@@ -583,7 +652,12 @@ export const requestPresignedUpload = async (
 		mediaId,
 		uploadUrl,
 		method: "PUT",
-		headers: { "Content-Type": contentType },
+		// Content-Length is bound into the signature; the client MUST send this
+		// exact value or storage will reject the PUT (see pod-storage.presign).
+		headers: {
+			"Content-Type": contentType,
+			"Content-Length": String(req.size),
+		},
 		storageKey,
 		expiresInSeconds,
 	};
@@ -662,10 +736,22 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
 		throw new Error("Invalid file type. Allowed: JPEG, PNG, WebP, HEIC");
 	}
 
+	// Sanitize the client-supplied filename before using it in the blob key.
+	// The raw `file.name` can contain path separators, control characters,
+	// or unicode tricks; we keep only a safe subset and cap the length.
+	const rawName = typeof file.name === "string" ? file.name : "upload";
+	const dot = rawName.lastIndexOf(".");
+	const baseName = (dot > 0 ? rawName.slice(0, dot) : rawName)
+		.replace(/[^a-zA-Z0-9._-]/g, "_")
+		.replace(/^\.+/, "")
+		.slice(0, 64) || "upload";
+	const ext = extForMime(contentType);
+	const safeName = `${baseName}.${ext}`;
+
 	let url: string;
 	try {
 		const { put } = await import("@vercel/blob");
-		const blob = await put(`pods/${podId}/${Date.now()}-${file.name}`, file, {
+		const blob = await put(`pods/${podId}/${Date.now()}-${safeName}`, file, {
 			access: "public",
 		});
 		url = blob.url;
@@ -736,6 +822,22 @@ export const deletePhoto = async (photoId: string) => {
 	revalidatePath(`/pods/${media.podId}`);
 };
 
+// Cursor format: `${createdAtIsoString}|${id}` — keyset pagination on
+// (createdAt desc, id desc) so concurrent inserts can't cause dupes or skips
+// the way offset pagination does.
+const parsePhotoCursor = (
+	cursor: string | undefined,
+): { createdAt: Date; id: string } | null => {
+	if (!cursor) return null;
+	const idx = cursor.indexOf("|");
+	if (idx === -1) return null;
+	const iso = cursor.slice(0, idx);
+	const id = cursor.slice(idx + 1);
+	const createdAt = new Date(iso);
+	if (Number.isNaN(createdAt.getTime()) || !id) return null;
+	return { createdAt, id };
+};
+
 export const getPodPhotos = async (
 	podId: string,
 	cursor?: string,
@@ -746,16 +848,20 @@ export const getPodPhotos = async (
 	if (!ctx || !policy.canView(ctx)) throw new Error("Access denied");
 	const database = requireDb();
 
+	const parsedCursor = parsePhotoCursor(cursor);
+
 	const rows = await database.query.podMedia.findMany({
 		where: and(
 			eq(podMedia.podId, podId),
 			eq(podMedia.status, "ready"),
 			sql`${podMedia.hiddenAt} IS NULL`,
+			parsedCursor
+				? sql`(${podMedia.createdAt}, ${podMedia.id}) < (${parsedCursor.createdAt}, ${parsedCursor.id})`
+				: sql`true`,
 		),
-		with: { uploadedBy: true },
-		orderBy: [desc(podMedia.createdAt)],
+		with: { uploadedBy: { columns: PUBLIC_USER_COLUMNS } },
+		orderBy: [desc(podMedia.createdAt), desc(podMedia.id)],
 		limit: limit + 1,
-		...(cursor ? { offset: Number.parseInt(cursor, 10) } : {}),
 	});
 
 	const hasMore = rows.length > limit;
@@ -773,9 +879,11 @@ export const getPodPhotos = async (
 		viewerReaction: own[row.id] ?? null,
 	}));
 
+	const last = rows[rows.length - 1];
 	return {
 		photos,
-		nextCursor: hasMore ? String(Number(cursor ?? "0") + limit) : null,
+		nextCursor:
+			hasMore && last ? `${last.createdAt.toISOString()}|${last.id}` : null,
 	};
 };
 
@@ -788,6 +896,12 @@ export const reactToMedia = async (mediaId: string, reaction: string | null) => 
 
 	const media = await reactions.resolveMediaPod(mediaId);
 	if (!media) throw new Error("Media not found");
+	// Media that is still processing, hidden by moderation, or removed
+	// must not accept new reactions — otherwise a client that cached an id
+	// can react to content the pod has effectively pulled.
+	if (media.status !== "ready") {
+		throw new Error("Cannot react to this media");
+	}
 
 	const ctx = await policy.loadPolicyContext(media.podId, viewer);
 	if (!ctx || !policy.canReact(ctx)) {

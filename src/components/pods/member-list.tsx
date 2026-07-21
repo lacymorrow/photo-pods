@@ -19,7 +19,6 @@ interface Member {
 	user: {
 		id: string;
 		name?: string | null;
-		email?: string | null;
 		image?: string | null;
 	};
 }
@@ -52,7 +51,7 @@ export const MemberList = ({
 		<div className="space-y-2">
 			{members.map((member) => {
 				const RoleIcon = roleIcons[member.role as keyof typeof roleIcons] ?? User;
-				const initials = (member.user.name ?? member.user.email ?? "?")
+				const initials = (member.user.name ?? "?")
 					.slice(0, 2)
 					.toUpperCase();
 
@@ -68,7 +67,7 @@ export const MemberList = ({
 							</Avatar>
 							<div>
 								<p className="text-sm font-medium">
-									{member.user.name ?? member.user.email}
+									{member.user.name ?? "Member"}
 									{member.userId === currentUserId && (
 										<span className="text-muted-foreground ml-1">(you)</span>
 									)}

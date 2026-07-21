@@ -147,16 +147,28 @@ export const presign = ({
 	const region = config.region;
 
 	const endpointUrl = new URL(config.endpoint);
+	// Virtual-hosted style: the bucket is already a subdomain of the endpoint
+	// host (e.g. `mybucket.s3.amazonaws.com`). Detect and skip the bucket
+	// segment in the path; otherwise use path-style (`/bucket/key`) which R2
+	// and MinIO both support.
+	const bucketHostPrefix = `${config.bucket}.`;
+	const isVirtualHosted = endpointUrl.hostname.startsWith(bucketHostPrefix);
 	const host = endpointUrl.host;
-	const canonicalUri = `/${encodeRfc3986(config.bucket)}/${key
-		.split("/")
-		.map(encodeRfc3986)
-		.join("/")}`;
+	const encodedKey = key.split("/").map(encodeRfc3986).join("/");
+	const canonicalUri = isVirtualHosted
+		? `/${encodedKey}`
+		: `/${encodeRfc3986(config.bucket)}/${encodedKey}`;
 
 	const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
 
 	const signedHeaders = ["host"];
 	if (method === "PUT" && contentType) signedHeaders.push("content-type");
+	// Bind the signature to the exact byte length so the storage backend
+	// rejects PUTs that don't match — prevents storage-cost DoS via a
+	// presigned URL for 5 MB being used to upload 500 GB.
+	if (method === "PUT" && contentLength != null) signedHeaders.push("content-length");
+	// SigV4 requires header names sorted alphabetically in the signed list.
+	signedHeaders.sort();
 	const signedHeadersString = signedHeaders.join(";");
 
 	const query: Record<string, string> = {
@@ -173,8 +185,11 @@ export const presign = ({
 		.join("&");
 
 	const canonicalHeaders = [
-		`host:${host}`,
+		...(method === "PUT" && contentLength != null
+			? [`content-length:${contentLength}`]
+			: []),
 		...(method === "PUT" && contentType ? [`content-type:${contentType}`] : []),
+		`host:${host}`,
 	].join("\n") + "\n";
 
 	const payloadHash = "UNSIGNED-PAYLOAD";
@@ -202,9 +217,6 @@ export const presign = ({
 	const signature = hexEncode(hmac(kSigning, stringToSign));
 
 	const finalQuery = `${canonicalQueryString}&X-Amz-Signature=${signature}`;
-	// contentLength is enforced by the client-side PUT; we do not include it in
-	// the signature because doing so would bind us to the exact byte length.
-	void contentLength;
 	return `${endpointUrl.protocol}//${host}${canonicalUri}?${finalQuery}`;
 };
 

@@ -86,6 +86,18 @@ ALTER TABLE "db_pod_photo" ADD COLUMN "ready_at" timestamp with time zone;--> st
 ALTER TABLE "db_pod" ADD COLUMN "media_count" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
 ALTER TABLE "db_pod" ADD COLUMN "member_count" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
 ALTER TABLE "db_pod" ADD COLUMN "follower_count" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+-- LAC-2857 backfill: rows added before this migration keep their DEFAULT
+-- (0 / 1 / 0), which would make existing pods report the wrong counts.
+-- Backfill from the source-of-truth tables so cached counters match reality.
+UPDATE "db_pod" SET "member_count" = COALESCE((
+	SELECT COUNT(*) FROM "db_pod_member" WHERE "db_pod_member"."pod_id" = "db_pod"."id"
+), 0);--> statement-breakpoint
+UPDATE "db_pod" SET "media_count" = COALESCE((
+	SELECT COUNT(*) FROM "db_pod_photo"
+	WHERE "db_pod_photo"."pod_id" = "db_pod"."id"
+		AND "db_pod_photo"."status" = 'ready'
+		AND "db_pod_photo"."hidden_at" IS NULL
+), 0);--> statement-breakpoint
 ALTER TABLE "db_pod" ADD COLUMN "retain_location_exif_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "db_pod" ADD COLUMN "hidden_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "db_pod_media_reaction" ADD CONSTRAINT "db_pod_media_reaction_media_id_db_pod_photo_id_fk" FOREIGN KEY ("media_id") REFERENCES "public"."db_pod_photo"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
