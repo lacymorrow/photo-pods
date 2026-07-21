@@ -18,6 +18,10 @@ import {
 } from "@/server/db/pods-schema";
 import { hasGpsExif, stripExif } from "@/server/services/pod-media-processing";
 import * as policy from "@/server/services/pod-policy";
+import {
+	checkReportRateLimit,
+	checkUploadRateLimit,
+} from "@/server/services/pod-rate-limit";
 import * as reactions from "@/server/services/pod-reactions";
 import {
 	collectMediaKeys,
@@ -597,24 +601,6 @@ export const unfollowPod = async (podId: string) => {
 	revalidatePath(`/pods/${podId}`);
 };
 
-// Sliding-window upload limiter (per user). MVP ceiling: 100 uploads/hour to
-// bound storage cost and abuse. Same in-memory caveats as the other limiters
-// in this file — a durable Redis-backed limiter is a follow-up (LAC-2859 §4).
-const UPLOAD_WINDOW_MS = 60 * 60 * 1000;
-const UPLOAD_MAX_PER_WINDOW = 100;
-const uploadAttempts = new Map<string, number[]>();
-
-const checkUploadRateLimit = (userId: string): void => {
-	const now = Date.now();
-	const cutoff = now - UPLOAD_WINDOW_MS;
-	const hits = (uploadAttempts.get(userId) ?? []).filter((t) => t > cutoff);
-	if (hits.length >= UPLOAD_MAX_PER_WINDOW) {
-		throw new Error("Upload limit reached. Please try again later.");
-	}
-	hits.push(now);
-	uploadAttempts.set(userId, hits);
-};
-
 // --- Media: presigned upload flow ---
 
 const PHOTO_MIMES = new Set([
@@ -678,7 +664,7 @@ export const requestPresignedUpload = async (
 	const ctx = await policy.guardPod(req.podId, viewer, policy.canUpload, "upload to");
 	if (!ctx.viewer.userId) throw new Error("Sign in required");
 
-	checkUploadRateLimit(ctx.viewer.userId);
+	await checkUploadRateLimit(ctx.viewer.userId);
 
 	const contentType = req.contentType.toLowerCase();
 	let mediaType: MediaType;
@@ -871,7 +857,7 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
 	const viewer = await viewerOf();
 	const ctx = await policy.guardPod(podId, viewer, policy.canUpload, "upload to");
 	if (!ctx.viewer.userId) throw new Error("Sign in required");
-	checkUploadRateLimit(ctx.viewer.userId);
+	await checkUploadRateLimit(ctx.viewer.userId);
 	const database = requireDb();
 
 	const file = formData.get("file") as File;
@@ -1125,23 +1111,6 @@ export const getReactorsForMedia = async (
 
 // --- Reports ---
 
-// Sliding-window limiter for reports (per user). Best-effort per-process; a
-// durable limiter lives with the other rate-limit follow-ups.
-const REPORT_WINDOW_MS = 60 * 60 * 1000;
-const REPORT_MAX_PER_WINDOW = 20;
-const reportAttempts = new Map<string, number[]>();
-
-const checkReportRateLimit = (userId: string): void => {
-	const now = Date.now();
-	const cutoff = now - REPORT_WINDOW_MS;
-	const hits = (reportAttempts.get(userId) ?? []).filter((t) => t > cutoff);
-	if (hits.length >= REPORT_MAX_PER_WINDOW) {
-		throw new Error("Too many reports. Please try again later.");
-	}
-	hits.push(now);
-	reportAttempts.set(userId, hits);
-};
-
 export const reportMedia = async (
 	mediaId: string,
 	reason:
@@ -1154,7 +1123,7 @@ export const reportMedia = async (
 	details?: string,
 ) => {
 	const user = await requireAuth();
-	checkReportRateLimit(user.id);
+	await checkReportRateLimit(user.id);
 	const database = requireDb();
 	const media = await reactions.resolveMediaPod(mediaId);
 	if (!media) throw new Error("Media not found");
