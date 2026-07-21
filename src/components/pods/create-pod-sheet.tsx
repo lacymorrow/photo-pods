@@ -102,7 +102,7 @@ export const CreatePodSheet = ({ open, onOpenChange }: CreatePodSheetProps) => {
 						</SheetTitle>
 						<SheetDescription>
 							{step === 0 && "Give it a name so people know what they're joining."}
-							{step === 1 && "You can't change this later in the MVP."}
+							{step === 1 && "You can change this later in pod settings."}
 							{step === 2 && "You can always add or change this later."}
 						</SheetDescription>
 					</SheetHeader>

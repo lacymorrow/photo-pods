@@ -8,7 +8,7 @@ import {
 	Share2,
 	X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -94,40 +94,50 @@ export const CircleInvite = ({
 		[contacts, search],
 	);
 
-	useEffect(() => {
-		if (!open) return;
-		if (link) return;
-		startTransition(async () => {
-			try {
-				const { token } = await createInviteLink(pod.id, "viewer", 72);
-				setLink(`${window.location.origin}/pods/invite/${token}`);
-			} catch {
-				// silent — the Copy button will just be hidden
-			}
+	// Mint the invite lazily on the first Copy/Share click so we don't
+	// insert a fresh 72h token into the DB (or leak a valid signed URL
+	// into the clipboard/share sheet) just because the sheet was opened.
+	const ensureLink = useCallback(async (): Promise<string | null> => {
+		if (link) return link;
+		return new Promise<string | null>((resolve) => {
+			startTransition(async () => {
+				try {
+					const { token } = await createInviteLink(pod.id, "viewer", 72);
+					const url = `${window.location.origin}/pods/invite/${token}`;
+					setLink(url);
+					resolve(url);
+				} catch {
+					resolve(null);
+				}
+			});
 		});
-	}, [open, link, pod.id]);
+	}, [link, pod.id]);
 
 	const handleCopy = async () => {
-		if (!link) return;
-		await navigator.clipboard.writeText(link);
+		const url = await ensureLink();
+		if (!url) return;
+		await navigator.clipboard.writeText(url);
 		setCopied(true);
 		setTimeout(() => setCopied(false), 1500);
 	};
 
 	const handleShare = async () => {
-		if (!link) return;
+		const url = await ensureLink();
+		if (!url) return;
 		if (typeof navigator !== "undefined" && "share" in navigator) {
 			try {
 				await navigator.share({
 					title: `Join ${pod.name} on Photopods`,
 					text: `You've been invited to ${pod.name}`,
-					url: link,
+					url,
 				});
 			} catch {
 				// user cancelled
 			}
 		} else {
-			await handleCopy();
+			await navigator.clipboard.writeText(url);
+			setCopied(true);
+			setTimeout(() => setCopied(false), 1500);
 		}
 	};
 
@@ -240,7 +250,7 @@ export const CircleInvite = ({
 						<Button
 							variant="outline"
 							onClick={handleCopy}
-							disabled={!link || isPending}
+							disabled={isPending}
 						>
 							{copied ? (
 								<Check className="h-4 w-4 mr-1.5" />
@@ -252,7 +262,7 @@ export const CircleInvite = ({
 						<Button
 							variant="outline"
 							onClick={handleShare}
-							disabled={!link || isPending}
+							disabled={isPending}
 						>
 							<Share2 className="h-4 w-4 mr-1.5" />
 							Share…
