@@ -895,20 +895,25 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
 	const safeName = `${baseName}.${ext}`;
 
 	// H1: server-side EXIF strip. This is the legacy path that receives the
-	// raw bytes, so we can just re-encode via sharp. Pods that opted in to
-	// retention keep the EXIF; everyone else gets GPS + camera identifiers
-	// scrubbed. Falls back to the original bytes if sharp can't decode
-	// (unsupported mid-transition formats etc).
+	// raw bytes, so we re-encode via sharp. Pods that opted in to retention
+	// keep the EXIF; everyone else gets GPS + camera identifiers scrubbed.
+	//
+	// Fail **closed** (LAC-2928): if sharp throws while stripping, we cannot
+	// prove the buffer is GPS-free, so we reject the upload rather than
+	// falling back to the raw bytes. Matches the finalize/presigned path.
 	const retainMetadata = Boolean(ctx.pod.retainLocationExif);
 	const originalBuf: Buffer = Buffer.from(await file.arrayBuffer());
-	let strippedBuf: Buffer = originalBuf;
+	let strippedBuf: Buffer;
 	let stripRanAt: Date | null = null;
 	try {
 		const result = await stripExif(originalBuf, contentType, { retainMetadata });
 		strippedBuf = result.buffer;
 		if (!retainMetadata) stripRanAt = new Date();
 	} catch (err) {
-		console.warn("[uploadPhoto] EXIF strip failed, uploading original", err);
+		console.warn("[uploadPhoto] EXIF strip failed, rejecting upload", err);
+		throw new Error(
+			"Upload rejected: could not strip EXIF metadata from image. Please retry with a different file.",
+		);
 	}
 	const uploadFile: Blob = new Blob([new Uint8Array(strippedBuf)], { type: contentType });
 
