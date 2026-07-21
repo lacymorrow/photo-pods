@@ -189,20 +189,22 @@ export const deletePod = async (podId: string) => {
 	await policy.guardPod(podId, viewer, policy.isOwner, "delete");
 	const database = requireDb();
 
-	// GDPR (LAC-2917 H2): gather every storage key attached to the pod so we
-	// can issue R2 deletes after the DB rows are gone. Cascades take care of
-	// the DB side; storage cleanup is best-effort with a retry queue.
+	// GDPR (LAC-2917 H2 / LAC-2930): gather every storage destination attached
+	// to the pod — R2 keys AND legacy Vercel Blob URLs — so cleanup runs after
+	// the DB rows are gone. Cascades take care of the DB side; storage cleanup
+	// is best-effort with a retry queue.
 	const mediaRows = await database
 		.select({
 			storageKey: podMedia.storageKey,
 			variants: podMedia.variants,
+			url: podMedia.url,
 		})
 		.from(podMedia)
 		.where(eq(podMedia.podId, podId));
-	const keys = mediaRows.flatMap((m) => collectMediaKeys(m));
+	const targets = mediaRows.flatMap((m) => collectMediaKeys(m));
 
 	await database.delete(pods).where(eq(pods.id, podId));
-	if (keys.length > 0) await deleteObjectsWithRetry(keys);
+	if (targets.length > 0) await deleteObjectsWithRetry(targets);
 	revalidatePath("/pods");
 };
 
@@ -800,7 +802,9 @@ export const finalizeUpload = async (input: {
 			if (head && (await hasGpsExif(head))) {
 				// Best-effort cleanup: nuke the object so the leak doesn't linger,
 				// mark the row `removed`, and reject the finalize.
-				await deleteObjectsWithRetry([media.storageKey]);
+				await deleteObjectsWithRetry([
+					{ kind: "storage-key", value: media.storageKey },
+				]);
 				await database
 					.update(podMedia)
 					.set({ status: "removed", hiddenAt: new Date() })
@@ -990,10 +994,11 @@ export const deletePhoto = async (photoId: string) => {
 			.where(eq(pods.id, media.podId));
 	});
 
-	// GDPR (LAC-2917 H2): delete the R2 objects (original + variants) after
-	// the DB row is gone. Best-effort — failed keys go to the retry queue.
-	const keys = collectMediaKeys(media);
-	if (keys.length > 0) await deleteObjectsWithRetry(keys);
+	// GDPR (LAC-2917 H2 / LAC-2930): delete the R2 objects (original +
+	// variants) and any legacy Vercel Blob url after the DB row is gone.
+	// Best-effort — failed targets go to the retry queue.
+	const targets = collectMediaKeys(media);
+	if (targets.length > 0) await deleteObjectsWithRetry(targets);
 
 	revalidatePath(`/pods/${media.podId}`);
 };
