@@ -168,7 +168,13 @@ export const podMedia = createTable(
 		durationSeconds: integer("duration_seconds"),
 		size: bigint("size", { mode: "number" }),
 		mimeType: varchar("mime_type", { length: 100 }),
+		// When the server ran the EXIF strip (currently only the legacy sharp
+		// path; the R2 finalize worker in LAC-2855 §3 will populate this too).
 		exifStripped: timestamp("exif_stripped_at", { withTimezone: true }),
+		// When `hasGpsExif` confirmed the stored bytes contain no GPS IFD.
+		// Set by finalizeUpload after client-side strip and by the legacy
+		// upload path after the server strip completes.
+		exifVerified: timestamp("exif_verified_at", { withTimezone: true }),
 		exifData: json("exif_data").$type<Record<string, unknown>>(),
 		hiddenAt: timestamp("hidden_at", { withTimezone: true }),
 		reportCount: integer("report_count").notNull().default(0),

@@ -772,9 +772,10 @@ export const finalizeUpload = async (input: {
 
 	// H1: verify the client stripped EXIF/GPS before we mark the media ready.
 	// Pods that opted in to `retainLocationExif` skip the check. Long-term
-	// this moves into the R2 finalize worker; interim we sniff a small
-	// prefix over HTTP Range from storage.
-	let exifStrippedAt: Date | null = null;
+	// the strip itself moves into the R2 finalize worker (LAC-2855 §3); for
+	// now the client strips and the server only verifies, so this path only
+	// stamps `exifVerifiedAt`, not `exifStrippedAt` (LAC-2932).
+	let exifVerifiedAt: Date | null = null;
 	if (media.type === "photo" && media.storageKey) {
 		const pod = await database.query.pods.findFirst({
 			where: eq(pods.id, media.podId),
@@ -785,25 +786,29 @@ export const finalizeUpload = async (input: {
 			// 256 KB covers the APP1 EXIF segment for any real-world phone
 			// photo. If storage isn't configured (fallback path), skip.
 			const head = await fetchObjectRange(config, media.storageKey, 256 * 1024 - 1);
-			if (head && (await hasGpsExif(head))) {
-				// Best-effort cleanup: nuke the object so the leak doesn't linger,
-				// mark the row `removed`, and reject the finalize.
-				await deleteObjectsWithRetry([
-					{ kind: "storage-key", value: media.storageKey },
-				]);
-				await database
-					.update(podMedia)
-					.set({ status: "removed", hiddenAt: new Date() })
-					.where(eq(podMedia.id, media.id));
-				throw new Error(
-					"Upload rejected: image still contains GPS metadata. Please retry.",
-				);
+			if (head) {
+				if (await hasGpsExif(head)) {
+					// Best-effort cleanup: nuke the object so the leak doesn't linger,
+					// mark the row `removed`, and reject the finalize.
+					await deleteObjectsWithRetry([
+						{ kind: "storage-key", value: media.storageKey },
+					]);
+					await database
+						.update(podMedia)
+						.set({ status: "removed", hiddenAt: new Date() })
+						.where(eq(podMedia.id, media.id));
+					throw new Error(
+						"Upload rejected: image still contains GPS metadata. Please retry.",
+					);
+				}
+				// Verified clean via `hasGpsExif`.
+				exifVerifiedAt = new Date();
 			}
-			// If we couldn't fetch the head at all we still mark it stripped:
-			// the client-side canvas re-encode drops EXIF entirely, and the
-			// storage-fetch failure alone shouldn't gate uploads. The
-			// long-term worker will re-verify.
-			exifStrippedAt = new Date();
+			// If we couldn't fetch the head at all we leave both timestamps
+			// null: the client-side canvas re-encode drops EXIF entirely, so
+			// the storage-fetch failure alone shouldn't gate uploads, but we
+			// also can't truthfully claim "verified". The long-term worker
+			// (LAC-2855 §3) will re-verify.
 		}
 	}
 
@@ -821,7 +826,7 @@ export const finalizeUpload = async (input: {
 			caption: input.caption ?? media.caption,
 			url: publicUrl ?? media.url,
 			readyAt: media.type === "video" ? media.readyAt : new Date(),
-			exifStripped: exifStrippedAt ?? media.exifStripped,
+			exifVerified: exifVerifiedAt ?? media.exifVerified,
 		})
 		.where(eq(podMedia.id, input.mediaId))
 		.returning();
@@ -905,6 +910,20 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
 			"Upload rejected: could not strip EXIF metadata from image. Please retry with a different file.",
 		);
 	}
+
+	// LAC-2932: independently verify the stripped buffer contains no GPS IFD
+	// before we accept the upload. `hasGpsExif` fails closed on parse errors
+	// (LAC-2928), so a `true` here means we couldn't prove it clean and must
+	// reject. Skipped when the pod opted in to retention.
+	let exifVerifiedAt: Date | null = null;
+	if (!retainMetadata) {
+		if (await hasGpsExif(strippedBuf)) {
+			throw new Error(
+				"Upload rejected: image still contains GPS metadata after strip. Please retry.",
+			);
+		}
+		exifVerifiedAt = new Date();
+	}
 	const uploadFile: Blob = new Blob([new Uint8Array(strippedBuf)], { type: contentType });
 
 	let url: string;
@@ -936,6 +955,7 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
 				caption: (formData.get("caption") as string) ?? null,
 				readyAt: new Date(),
 				exifStripped: stripRanAt,
+				exifVerified: exifVerifiedAt,
 			})
 			.returning();
 		await tx
