@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useCallback, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { stripExifClientSide } from "@/lib/pods/strip-exif-client";
 import { uploadPhoto } from "@/server/actions/pods";
 
 interface PhotoUploadProps {
@@ -41,8 +42,13 @@ export const PhotoUpload = ({ podId }: PhotoUploadProps) => {
 
 		startTransition(async () => {
 			for (const { file } of previews) {
+				// LAC-2917 H1: strip EXIF (incl. GPS) on the client before the
+				// bytes leave the browser. The server enforces the same on
+				// upload, but stripping here means the raw geotagged photo
+				// never touches our infrastructure.
+				const cleaned = await stripExifClientSide(file).catch(() => file);
 				const formData = new FormData();
-				formData.set("file", file);
+				formData.set("file", cleaned);
 				await uploadPhoto(podId, formData);
 			}
 			for (const p of previews) URL.revokeObjectURL(p.preview);

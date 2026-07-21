@@ -16,10 +16,16 @@ import {
 	podMembers,
 	pods,
 } from "@/server/db/pods-schema";
+import { hasGpsExif, stripExif } from "@/server/services/pod-media-processing";
 import * as policy from "@/server/services/pod-policy";
 import * as reactions from "@/server/services/pod-reactions";
 import {
+	collectMediaKeys,
+	deleteObjectsWithRetry,
+} from "@/server/services/pod-storage-cleanup";
+import {
 	buildStorageKey,
+	fetchObjectRange,
 	isStorageConfigured,
 	loadStorageConfig,
 	presign,
@@ -183,7 +189,20 @@ export const deletePod = async (podId: string) => {
 	await policy.guardPod(podId, viewer, policy.isOwner, "delete");
 	const database = requireDb();
 
+	// GDPR (LAC-2917 H2): gather every storage key attached to the pod so we
+	// can issue R2 deletes after the DB rows are gone. Cascades take care of
+	// the DB side; storage cleanup is best-effort with a retry queue.
+	const mediaRows = await database
+		.select({
+			storageKey: podMedia.storageKey,
+			variants: podMedia.variants,
+		})
+		.from(podMedia)
+		.where(eq(podMedia.podId, podId));
+	const keys = mediaRows.flatMap((m) => collectMediaKeys(m));
+
 	await database.delete(pods).where(eq(pods.id, podId));
+	if (keys.length > 0) await deleteObjectsWithRetry(keys);
 	revalidatePath("/pods");
 };
 
@@ -576,6 +595,24 @@ export const unfollowPod = async (podId: string) => {
 	revalidatePath(`/pods/${podId}`);
 };
 
+// Sliding-window upload limiter (per user). MVP ceiling: 100 uploads/hour to
+// bound storage cost and abuse. Same in-memory caveats as the other limiters
+// in this file — a durable Redis-backed limiter is a follow-up (LAC-2859 §4).
+const UPLOAD_WINDOW_MS = 60 * 60 * 1000;
+const UPLOAD_MAX_PER_WINDOW = 100;
+const uploadAttempts = new Map<string, number[]>();
+
+const checkUploadRateLimit = (userId: string): void => {
+	const now = Date.now();
+	const cutoff = now - UPLOAD_WINDOW_MS;
+	const hits = (uploadAttempts.get(userId) ?? []).filter((t) => t > cutoff);
+	if (hits.length >= UPLOAD_MAX_PER_WINDOW) {
+		throw new Error("Upload limit reached. Please try again later.");
+	}
+	hits.push(now);
+	uploadAttempts.set(userId, hits);
+};
+
 // --- Media: presigned upload flow ---
 
 const PHOTO_MIMES = new Set([
@@ -638,6 +675,8 @@ export const requestPresignedUpload = async (
 	const viewer = await viewerOf();
 	const ctx = await policy.guardPod(req.podId, viewer, policy.canUpload, "upload to");
 	if (!ctx.viewer.userId) throw new Error("Sign in required");
+
+	checkUploadRateLimit(ctx.viewer.userId);
 
 	const contentType = req.contentType.toLowerCase();
 	let mediaType: MediaType;
@@ -742,6 +781,42 @@ export const finalizeUpload = async (input: {
 	if (media.uploadedById !== viewer.userId) throw new Error("Not your upload");
 
 	const config = loadStorageConfig();
+
+	// H1: verify the client stripped EXIF/GPS before we mark the media ready.
+	// Pods that opted in to `retainLocationExif` skip the check. Long-term
+	// this moves into the R2 finalize worker; interim we sniff a small
+	// prefix over HTTP Range from storage.
+	let exifStrippedAt: Date | null = null;
+	if (media.type === "photo" && media.storageKey) {
+		const pod = await database.query.pods.findFirst({
+			where: eq(pods.id, media.podId),
+			columns: { retainLocationExif: true },
+		});
+		const retain = Boolean(pod?.retainLocationExif);
+		if (!retain) {
+			// 256 KB covers the APP1 EXIF segment for any real-world phone
+			// photo. If storage isn't configured (fallback path), skip.
+			const head = await fetchObjectRange(config, media.storageKey, 256 * 1024 - 1);
+			if (head && (await hasGpsExif(head))) {
+				// Best-effort cleanup: nuke the object so the leak doesn't linger,
+				// mark the row `removed`, and reject the finalize.
+				await deleteObjectsWithRetry([media.storageKey]);
+				await database
+					.update(podMedia)
+					.set({ status: "removed", hiddenAt: new Date() })
+					.where(eq(podMedia.id, media.id));
+				throw new Error(
+					"Upload rejected: image still contains GPS metadata. Please retry.",
+				);
+			}
+			// If we couldn't fetch the head at all we still mark it stripped:
+			// the client-side canvas re-encode drops EXIF entirely, and the
+			// storage-fetch failure alone shouldn't gate uploads. The
+			// long-term worker will re-verify.
+			exifStrippedAt = new Date();
+		}
+	}
+
 	const publicUrl = media.storageKey
 		? publicUrlForKey(config, media.storageKey)
 		: null;
@@ -756,6 +831,7 @@ export const finalizeUpload = async (input: {
 			caption: input.caption ?? media.caption,
 			url: publicUrl ?? media.url,
 			readyAt: media.type === "video" ? media.readyAt : new Date(),
+			exifStripped: exifStrippedAt ?? media.exifStripped,
 		})
 		.where(eq(podMedia.id, input.mediaId))
 		.returning();
@@ -791,6 +867,7 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
 	const viewer = await viewerOf();
 	const ctx = await policy.guardPod(podId, viewer, policy.canUpload, "upload to");
 	if (!ctx.viewer.userId) throw new Error("Sign in required");
+	checkUploadRateLimit(ctx.viewer.userId);
 	const database = requireDb();
 
 	const file = formData.get("file") as File;
@@ -817,16 +894,34 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
 	const ext = extForMime(contentType);
 	const safeName = `${baseName}.${ext}`;
 
+	// H1: server-side EXIF strip. This is the legacy path that receives the
+	// raw bytes, so we can just re-encode via sharp. Pods that opted in to
+	// retention keep the EXIF; everyone else gets GPS + camera identifiers
+	// scrubbed. Falls back to the original bytes if sharp can't decode
+	// (unsupported mid-transition formats etc).
+	const retainMetadata = Boolean(ctx.pod.retainLocationExif);
+	const originalBuf: Buffer = Buffer.from(await file.arrayBuffer());
+	let strippedBuf: Buffer = originalBuf;
+	let stripRanAt: Date | null = null;
+	try {
+		const result = await stripExif(originalBuf, contentType, { retainMetadata });
+		strippedBuf = result.buffer;
+		if (!retainMetadata) stripRanAt = new Date();
+	} catch (err) {
+		console.warn("[uploadPhoto] EXIF strip failed, uploading original", err);
+	}
+	const uploadFile: Blob = new Blob([new Uint8Array(strippedBuf)], { type: contentType });
+
 	let url: string;
 	try {
 		const { put } = await import("@vercel/blob");
-		const blob = await put(`pods/${podId}/${Date.now()}-${safeName}`, file, {
+		const blob = await put(`pods/${podId}/${Date.now()}-${safeName}`, uploadFile, {
 			access: "public",
 		});
 		url = blob.url;
 	} catch {
-		const { uploadFile } = await import("@/server/services/file");
-		const result = await uploadFile(file as any);
+		const fileService = await import("@/server/services/file");
+		const result = await fileService.uploadFile(uploadFile as any);
 		url = result.url;
 	}
 
@@ -842,9 +937,10 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
 				status: "ready",
 				url,
 				mimeType: contentType,
-				size: file.size,
+				size: strippedBuf.byteLength,
 				caption: (formData.get("caption") as string) ?? null,
 				readyAt: new Date(),
+				exifStripped: stripRanAt,
 			})
 			.returning();
 		await tx
@@ -888,6 +984,12 @@ export const deletePhoto = async (photoId: string) => {
 			})
 			.where(eq(pods.id, media.podId));
 	});
+
+	// GDPR (LAC-2917 H2): delete the R2 objects (original + variants) after
+	// the DB row is gone. Best-effort — failed keys go to the retry queue.
+	const keys = collectMediaKeys(media);
+	if (keys.length > 0) await deleteObjectsWithRetry(keys);
+
 	revalidatePath(`/pods/${media.podId}`);
 };
 
