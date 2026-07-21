@@ -168,7 +168,13 @@ export const podMedia = createTable(
 		durationSeconds: integer("duration_seconds"),
 		size: bigint("size", { mode: "number" }),
 		mimeType: varchar("mime_type", { length: 100 }),
+		// When the server ran the EXIF strip (currently only the legacy sharp
+		// path; the R2 finalize worker in LAC-2855 §3 will populate this too).
 		exifStripped: timestamp("exif_stripped_at", { withTimezone: true }),
+		// When `hasGpsExif` confirmed the stored bytes contain no GPS IFD.
+		// Set by finalizeUpload after client-side strip and by the legacy
+		// upload path after the server strip completes.
+		exifVerified: timestamp("exif_verified_at", { withTimezone: true }),
 		exifData: json("exif_data").$type<Record<string, unknown>>(),
 		hiddenAt: timestamp("hidden_at", { withTimezone: true }),
 		reportCount: integer("report_count").notNull().default(0),
@@ -307,6 +313,32 @@ export const mediaReports = createTable(
 	],
 );
 
+/**
+ * Retry queue for R2 object deletes that failed at the time we deleted the DB
+ * row. GDPR-relevant: uploads must not linger in object storage after a user
+ * deletes them, but we don't want a transient R2 outage to block the DB
+ * delete. Rows here are drained by a worker (LAC-2855 §3) with backoff.
+ */
+export const podStorageDeleteQueue = createTable(
+	"pod_storage_delete_queue",
+	{
+		id: uuid("id")
+			.primaryKey()
+			.default(sql`gen_random_uuid()`),
+		storageKey: text("storage_key").notNull(),
+		reason: varchar("reason", { length: 32 }).notNull().default("delete"),
+		attempts: integer("attempts").notNull().default(0),
+		lastError: text("last_error"),
+		lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+		createdAt: timestamp("created_at", { withTimezone: true })
+			.default(sql`CURRENT_TIMESTAMP`)
+			.notNull(),
+	},
+	(table) => [
+		index("pod_storage_delete_queue_created_idx").on(table.createdAt),
+	],
+);
+
 export const podReports = createTable(
 	"pod_report",
 	{
@@ -424,6 +456,8 @@ export type MediaReport = typeof mediaReports.$inferSelect;
 export type NewMediaReport = typeof mediaReports.$inferInsert;
 export type PodReport = typeof podReports.$inferSelect;
 export type NewPodReport = typeof podReports.$inferInsert;
+export type PodStorageDeleteQueueEntry = typeof podStorageDeleteQueue.$inferSelect;
+export type NewPodStorageDeleteQueueEntry = typeof podStorageDeleteQueue.$inferInsert;
 
 // Back-compat alias so existing imports of `podPhotos` keep working during
 // the frontend transition; new code should use `podMedia`.

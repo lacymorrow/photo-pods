@@ -16,15 +16,31 @@ import {
 	podMembers,
 	pods,
 } from "@/server/db/pods-schema";
+import { hasGpsExif, stripExif } from "@/server/services/pod-media-processing";
 import * as policy from "@/server/services/pod-policy";
+import {
+	checkReportRateLimit,
+	checkUploadRateLimit,
+} from "@/server/services/pod-rate-limit";
 import * as reactions from "@/server/services/pod-reactions";
 import {
+	collectMediaKeys,
+	deleteObjectsWithRetry,
+} from "@/server/services/pod-storage-cleanup";
+import {
 	buildStorageKey,
+	fetchObject,
+	fetchObjectRange,
 	isStorageConfigured,
 	loadStorageConfig,
 	presign,
 	publicUrlForKey,
+	putObject,
 } from "@/server/services/pod-storage";
+import {
+	hasVideoGpsMetadata,
+	scrubMp4Metadata,
+} from "@/server/services/pod-video-processing";
 
 // --- Helpers ---
 
@@ -183,7 +199,22 @@ export const deletePod = async (podId: string) => {
 	await policy.guardPod(podId, viewer, policy.isOwner, "delete");
 	const database = requireDb();
 
+	// GDPR (LAC-2917 H2 / LAC-2930): gather every storage destination attached
+	// to the pod — R2 keys AND legacy Vercel Blob URLs — so cleanup runs after
+	// the DB rows are gone. Cascades take care of the DB side; storage cleanup
+	// is best-effort with a retry queue.
+	const mediaRows = await database
+		.select({
+			storageKey: podMedia.storageKey,
+			variants: podMedia.variants,
+			url: podMedia.url,
+		})
+		.from(podMedia)
+		.where(eq(podMedia.podId, podId));
+	const targets = mediaRows.flatMap((m) => collectMediaKeys(m));
+
 	await database.delete(pods).where(eq(pods.id, podId));
+	if (targets.length > 0) await deleteObjectsWithRetry(targets);
 	revalidatePath("/pods");
 };
 
@@ -639,6 +670,8 @@ export const requestPresignedUpload = async (
 	const ctx = await policy.guardPod(req.podId, viewer, policy.canUpload, "upload to");
 	if (!ctx.viewer.userId) throw new Error("Sign in required");
 
+	await checkUploadRateLimit(ctx.viewer.userId);
+
 	const contentType = req.contentType.toLowerCase();
 	let mediaType: MediaType;
 	let maxBytes: number;
@@ -742,6 +775,129 @@ export const finalizeUpload = async (input: {
 	if (media.uploadedById !== viewer.userId) throw new Error("Not your upload");
 
 	const config = loadStorageConfig();
+
+	// H1: verify the client stripped EXIF/GPS before we mark the media ready.
+	// Pods that opted in to `retainLocationExif` skip the check. Long-term
+	// the strip itself moves into the R2 finalize worker (LAC-2855 §3); for
+	// now the client strips and the server only verifies, so this path only
+	// stamps `exifVerifiedAt`, not `exifStrippedAt` (LAC-2932).
+	let exifStrippedAt: Date | null = null;
+	let exifVerifiedAt: Date | null = null;
+	if (media.type === "photo" && media.storageKey) {
+		const pod = await database.query.pods.findFirst({
+			where: eq(pods.id, media.podId),
+			columns: { retainLocationExif: true },
+		});
+		const retain = Boolean(pod?.retainLocationExif);
+		if (!retain) {
+			// 256 KB covers the APP1 EXIF segment for any real-world phone
+			// photo. If storage isn't configured (fallback path), skip.
+			const head = await fetchObjectRange(config, media.storageKey, 256 * 1024 - 1);
+			if (head) {
+				if (await hasGpsExif(head)) {
+					// Best-effort cleanup: nuke the object so the leak doesn't linger,
+					// mark the row `removed`, and reject the finalize.
+					await deleteObjectsWithRetry([
+						{ kind: "storage-key", value: media.storageKey },
+					]);
+					await database
+						.update(podMedia)
+						.set({ status: "removed", hiddenAt: new Date() })
+						.where(eq(podMedia.id, media.id));
+					throw new Error(
+						"Upload rejected: image still contains GPS metadata. Please retry.",
+					);
+				}
+				// Verified clean via `hasGpsExif`.
+				exifVerifiedAt = new Date();
+			}
+			// If we couldn't fetch the head at all we leave both timestamps
+			// null: the client-side canvas re-encode drops EXIF entirely, so
+			// the storage-fetch failure alone shouldn't gate uploads, but we
+			// also can't truthfully claim "verified". The long-term worker
+			// (LAC-2855 §3) will re-verify.
+		}
+	}
+
+	// LAC-2933: MP4/MOV atom-level GPS scrub. Videos from iOS/Android capture
+	// pipelines carry GPS inside `moov/udta` (©xyz ISO 6709) and `moov/meta`
+	// (Apple `com.apple.quicktime.location.ISO6709`). We rewrite those boxes
+	// to `free` and zero their payload, then verify no GPS marker remains,
+	// then upload the scrubbed bytes back to the same key. Pods that opted
+	// in to `retainLocationExif` skip the strip. Fails closed (LAC-2928):
+	// parse errors, fetch failures, verification hits, and upload failures
+	// all reject the finalize AND delete the stored object so the original
+	// GPS-tainted bytes never linger at a client-known key. Long-term this
+	// path also moves into the R2 finalize worker (LAC-2855 §3).
+	if (media.type === "video" && media.storageKey && isStorageConfigured()) {
+		const pod = await database.query.pods.findFirst({
+			where: eq(pods.id, media.podId),
+			columns: { retainLocationExif: true },
+		});
+		const retain = Boolean(pod?.retainLocationExif);
+		// WebM (EBML/Matroska) isn't ISOBMFF — the MP4 scrubber can't parse
+		// it and would fail closed on every MediaRecorder capture. WebM from
+		// browser MediaRecorder does not carry GPS, so we skip the scrub and
+		// just stamp the verified timestamp. If we ever accept WebM from
+		// pipelines that could embed location (some Android encoders), swap
+		// this for an EBML-aware scrubber.
+		const isWebm = (media.mimeType ?? "").toLowerCase() === "video/webm";
+		if (!retain && !isWebm) {
+			const storageKey = media.storageKey;
+			const rejectAndCleanup = async (message: string): Promise<never> => {
+				await deleteObjectsWithRetry([
+					{ kind: "storage-key", value: storageKey },
+				]);
+				await database
+					.update(podMedia)
+					.set({ status: "removed", hiddenAt: new Date() })
+					.where(eq(podMedia.id, media.id));
+				throw new Error(message);
+			};
+			const original = await fetchObject(config, storageKey);
+			if (!original) {
+				await rejectAndCleanup(
+					"Upload rejected: could not fetch uploaded video for GPS strip.",
+				);
+			}
+			let scrubbed: Buffer;
+			try {
+				scrubbed = scrubMp4Metadata(original as Buffer);
+			} catch (err) {
+				console.warn(
+					"[finalizeUpload] MP4 GPS scrub failed, rejecting upload",
+					err,
+				);
+				await rejectAndCleanup(
+					"Upload rejected: video could not be parsed to strip GPS metadata. Please retry with a different file.",
+				);
+				throw err; // unreachable; satisfies TS control-flow
+			}
+			if (hasVideoGpsMetadata(scrubbed)) {
+				await rejectAndCleanup(
+					"Upload rejected: video still contains GPS metadata after strip. Please retry.",
+				);
+			}
+			const uploaded = await putObject(
+				config,
+				storageKey,
+				scrubbed,
+				media.mimeType ?? "video/mp4",
+			);
+			if (!uploaded) {
+				await rejectAndCleanup(
+					"Upload rejected: failed to store scrubbed video bytes.",
+				);
+			}
+			exifStrippedAt = new Date();
+			exifVerifiedAt = new Date();
+		} else if (!retain && isWebm) {
+			// WebM path: no scrub, but stamp verified since MediaRecorder
+			// output has no GPS to carry.
+			exifVerifiedAt = new Date();
+		}
+	}
+
 	const publicUrl = media.storageKey
 		? publicUrlForKey(config, media.storageKey)
 		: null;
@@ -756,6 +912,8 @@ export const finalizeUpload = async (input: {
 			caption: input.caption ?? media.caption,
 			url: publicUrl ?? media.url,
 			readyAt: media.type === "video" ? media.readyAt : new Date(),
+			exifStripped: exifStrippedAt ?? media.exifStripped,
+			exifVerified: exifVerifiedAt ?? media.exifVerified,
 		})
 		.where(eq(podMedia.id, input.mediaId))
 		.returning();
@@ -791,6 +949,7 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
 	const viewer = await viewerOf();
 	const ctx = await policy.guardPod(podId, viewer, policy.canUpload, "upload to");
 	if (!ctx.viewer.userId) throw new Error("Sign in required");
+	await checkUploadRateLimit(ctx.viewer.userId);
 	const database = requireDb();
 
 	const file = formData.get("file") as File;
@@ -817,16 +976,53 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
 	const ext = extForMime(contentType);
 	const safeName = `${baseName}.${ext}`;
 
+	// H1: server-side EXIF strip. This is the legacy path that receives the
+	// raw bytes, so we re-encode via sharp. Pods that opted in to retention
+	// keep the EXIF; everyone else gets GPS + camera identifiers scrubbed.
+	//
+	// Fail **closed** (LAC-2928): if sharp throws while stripping, we cannot
+	// prove the buffer is GPS-free, so we reject the upload rather than
+	// falling back to the raw bytes. Matches the finalize/presigned path.
+	const retainMetadata = Boolean(ctx.pod.retainLocationExif);
+	const originalBuf: Buffer = Buffer.from(await file.arrayBuffer());
+	let strippedBuf: Buffer;
+	let stripRanAt: Date | null = null;
+	try {
+		const result = await stripExif(originalBuf, contentType, { retainMetadata });
+		strippedBuf = result.buffer;
+		if (!retainMetadata) stripRanAt = new Date();
+	} catch (err) {
+		console.warn("[uploadPhoto] EXIF strip failed, rejecting upload", err);
+		throw new Error(
+			"Upload rejected: could not strip EXIF metadata from image. Please retry with a different file.",
+		);
+	}
+
+	// LAC-2932: independently verify the stripped buffer contains no GPS IFD
+	// before we accept the upload. `hasGpsExif` fails closed on parse errors
+	// (LAC-2928), so a `true` here means we couldn't prove it clean and must
+	// reject. Skipped when the pod opted in to retention.
+	let exifVerifiedAt: Date | null = null;
+	if (!retainMetadata) {
+		if (await hasGpsExif(strippedBuf)) {
+			throw new Error(
+				"Upload rejected: image still contains GPS metadata after strip. Please retry.",
+			);
+		}
+		exifVerifiedAt = new Date();
+	}
+	const uploadFile: Blob = new Blob([new Uint8Array(strippedBuf)], { type: contentType });
+
 	let url: string;
 	try {
 		const { put } = await import("@vercel/blob");
-		const blob = await put(`pods/${podId}/${Date.now()}-${safeName}`, file, {
+		const blob = await put(`pods/${podId}/${Date.now()}-${safeName}`, uploadFile, {
 			access: "public",
 		});
 		url = blob.url;
 	} catch {
-		const { uploadFile } = await import("@/server/services/file");
-		const result = await uploadFile(file as any);
+		const fileService = await import("@/server/services/file");
+		const result = await fileService.uploadFile(uploadFile as any);
 		url = result.url;
 	}
 
@@ -842,9 +1038,11 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
 				status: "ready",
 				url,
 				mimeType: contentType,
-				size: file.size,
+				size: strippedBuf.byteLength,
 				caption: (formData.get("caption") as string) ?? null,
 				readyAt: new Date(),
+				exifStripped: stripRanAt,
+				exifVerified: exifVerifiedAt,
 			})
 			.returning();
 		await tx
@@ -888,6 +1086,13 @@ export const deletePhoto = async (photoId: string) => {
 			})
 			.where(eq(pods.id, media.podId));
 	});
+
+	// GDPR (LAC-2917 H2 / LAC-2930): delete the R2 objects (original +
+	// variants) and any legacy Vercel Blob url after the DB row is gone.
+	// Best-effort — failed targets go to the retry queue.
+	const targets = collectMediaKeys(media);
+	if (targets.length > 0) await deleteObjectsWithRetry(targets);
+
 	revalidatePath(`/pods/${media.podId}`);
 };
 
@@ -1013,23 +1218,6 @@ export const getReactorsForMedia = async (
 
 // --- Reports ---
 
-// Sliding-window limiter for reports (per user). Best-effort per-process; a
-// durable limiter lives with the other rate-limit follow-ups.
-const REPORT_WINDOW_MS = 60 * 60 * 1000;
-const REPORT_MAX_PER_WINDOW = 20;
-const reportAttempts = new Map<string, number[]>();
-
-const checkReportRateLimit = (userId: string): void => {
-	const now = Date.now();
-	const cutoff = now - REPORT_WINDOW_MS;
-	const hits = (reportAttempts.get(userId) ?? []).filter((t) => t > cutoff);
-	if (hits.length >= REPORT_MAX_PER_WINDOW) {
-		throw new Error("Too many reports. Please try again later.");
-	}
-	hits.push(now);
-	reportAttempts.set(userId, hits);
-};
-
 export const reportMedia = async (
 	mediaId: string,
 	reason:
@@ -1042,7 +1230,7 @@ export const reportMedia = async (
 	details?: string,
 ) => {
 	const user = await requireAuth();
-	checkReportRateLimit(user.id);
+	await checkReportRateLimit(user.id);
 	const database = requireDb();
 	const media = await reactions.resolveMediaPod(mediaId);
 	if (!media) throw new Error("Media not found");

@@ -1,11 +1,16 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { routes } from "@/config/routes";
 import { auth } from "@/server/auth";
 import { db } from "@/server/db";
+import { podMedia, pods } from "@/server/db/pods-schema";
 import { accounts, users } from "@/server/db/schema";
+import {
+	collectMediaKeys,
+	deleteObjectsWithRetry,
+} from "@/server/services/pod-storage-cleanup";
 
 interface ProfileData {
   name: string;
@@ -88,7 +93,41 @@ export async function deleteAccount() {
       return { success: false, error: "Not authenticated" };
     }
 
-    await db?.delete(users).where(eq(users.id, session.user.id));
+    if (!db) {
+      return { success: false, error: "Database not available" };
+    }
+
+    // GDPR (LAC-2917 H2 / LAC-2930): before we cascade-delete the user row,
+    // enumerate every storage destination owned by them — R2 keys AND legacy
+    // Vercel Blob URLs — for both photos they uploaded and photos in pods
+    // they own, so cleanup can run after the DB is gone. Failed targets
+    // queue for worker retry.
+    const userId = session.user.id;
+    const ownedPodIds = (
+      await db.select({ id: pods.id }).from(pods).where(eq(pods.createdById, userId))
+    ).map((r) => r.id);
+    const mediaRows = await db
+      .select({
+        storageKey: podMedia.storageKey,
+        variants: podMedia.variants,
+        url: podMedia.url,
+      })
+      .from(podMedia)
+      .where(
+        ownedPodIds.length > 0
+          ? or(
+              eq(podMedia.uploadedById, userId),
+              // Any media in pods the user owns also disappears via cascade.
+              // Drizzle's inArray needs the imported operator; use a raw OR
+              // over the pod ids to keep the import surface small.
+              ...ownedPodIds.map((id) => eq(podMedia.podId, id)),
+            )
+          : eq(podMedia.uploadedById, userId),
+      );
+    const targets = mediaRows.flatMap((m) => collectMediaKeys(m));
+
+    await db.delete(users).where(eq(users.id, userId));
+    if (targets.length > 0) await deleteObjectsWithRetry(targets);
 
     return { success: true, message: "Account deleted successfully" };
   } catch (error) {

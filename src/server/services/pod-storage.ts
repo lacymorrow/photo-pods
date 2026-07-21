@@ -107,7 +107,7 @@ const encodeRfc3986 = (value: string): string =>
 
 interface PresignInput {
 	config: StorageConfig;
-	method: "PUT" | "GET";
+	method: "PUT" | "GET" | "DELETE";
 	key: string;
 	contentType?: string;
 	contentLength?: number;
@@ -236,3 +236,124 @@ export const publicUrlForKey = (
 
 export const isStorageConfigured = (): boolean =>
 	loadStorageConfig().provider !== "vercel-blob";
+
+// --- Object mutation / read helpers ---
+
+export interface DeleteResult {
+	ok: boolean;
+	status: number;
+	error?: string;
+}
+
+/**
+ * Issue an S3/R2 DELETE for a single object key. Presigned so we don't need
+ * to introduce the AWS SDK just for one route.
+ *
+ * A 404 counts as success (the object is already gone — GDPR requirement is
+ * satisfied). 403 is treated as a permission failure worth logging.
+ */
+export const deleteObject = async (
+	config: StorageConfig,
+	key: string,
+): Promise<DeleteResult> => {
+	if (config.provider === "vercel-blob" || !config.bucket) {
+		return { ok: false, status: 0, error: "storage_not_configured" };
+	}
+	try {
+		const url = presign({ config, method: "DELETE", key, expiresInSeconds: 60 });
+		const res = await fetch(url, { method: "DELETE" });
+		if (res.ok || res.status === 404) {
+			return { ok: true, status: res.status };
+		}
+		return {
+			ok: false,
+			status: res.status,
+			error: `${res.status} ${res.statusText}`,
+		};
+	} catch (err) {
+		return {
+			ok: false,
+			status: 0,
+			error: err instanceof Error ? err.message : "unknown",
+		};
+	}
+};
+
+/**
+ * Fetch a byte range from an object (used to sniff EXIF from a photo without
+ * pulling the whole file). Returns null on any error.
+ */
+export const fetchObjectRange = async (
+	config: StorageConfig,
+	key: string,
+	rangeEnd: number,
+): Promise<Buffer | null> => {
+	if (config.provider === "vercel-blob" || !config.bucket) return null;
+	try {
+		const url = presign({ config, method: "GET", key, expiresInSeconds: 60 });
+		const res = await fetch(url, {
+			method: "GET",
+			headers: { Range: `bytes=0-${Math.max(0, rangeEnd)}` },
+		});
+		if (!res.ok && res.status !== 206) return null;
+		const buf = Buffer.from(await res.arrayBuffer());
+		return buf;
+	} catch {
+		return null;
+	}
+};
+
+/**
+ * Fetch a full object as a Buffer. Used by the video finalize path
+ * (LAC-2933) to pull the uploaded MP4/MOV for atom-level GPS scrubbing.
+ * Returns null on any error.
+ */
+export const fetchObject = async (
+	config: StorageConfig,
+	key: string,
+): Promise<Buffer | null> => {
+	if (config.provider === "vercel-blob" || !config.bucket) return null;
+	try {
+		const url = presign({ config, method: "GET", key, expiresInSeconds: 60 });
+		const res = await fetch(url, { method: "GET" });
+		if (!res.ok) return null;
+		return Buffer.from(await res.arrayBuffer());
+	} catch {
+		return null;
+	}
+};
+
+/**
+ * PUT an object body via a presigned URL. Used by the video finalize path
+ * (LAC-2933) to write back scrubbed MP4/MOV bytes. Returns false on any
+ * error so the caller can fail closed.
+ */
+export const putObject = async (
+	config: StorageConfig,
+	key: string,
+	body: Buffer,
+	contentType: string,
+): Promise<boolean> => {
+	if (config.provider === "vercel-blob" || !config.bucket) return false;
+	try {
+		const url = presign({
+			config,
+			method: "PUT",
+			key,
+			contentType,
+			contentLength: body.byteLength,
+			expiresInSeconds: 60,
+		});
+		const res = await fetch(url, {
+			method: "PUT",
+			headers: {
+				"Content-Type": contentType,
+				"Content-Length": String(body.byteLength),
+			},
+			body: new Uint8Array(body),
+		});
+		return res.ok;
+	} catch {
+		return false;
+	}
+};
