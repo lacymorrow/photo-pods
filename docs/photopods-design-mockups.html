@@ -1,0 +1,1506 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Photopods - Design Mockups</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            surface: {
+              50: '#fafafa',
+              100: '#f4f4f5',
+              200: '#e4e4e7',
+              800: '#27272a',
+              900: '#18181b',
+              950: '#09090b',
+            },
+            primary: '#8b5cf6',
+            'primary-hover': '#7c3aed',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    :root {
+      --bg-base: #09090b;
+      --bg-card: #18181b;
+      --bg-elevated: #27272a;
+      --text-primary: #fafafa;
+      --text-secondary: #a1a1aa;
+      --text-muted: #71717a;
+      --border-color: #27272a;
+      --primary: #8b5cf6;
+      --primary-hover: #7c3aed;
+      --private-accent: #6366f1;
+      --group-accent: #f59e0b;
+      --public-accent: #14b8a6;
+      --radius-card: 12px;
+      --radius-pill: 9999px;
+      --spacing: 16px;
+    }
+
+    html.light {
+      --bg-base: #fafafa;
+      --bg-card: #ffffff;
+      --bg-elevated: #f4f4f5;
+      --text-primary: #09090b;
+      --text-secondary: #52525b;
+      --text-muted: #a1a1aa;
+      --border-color: #e4e4e7;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, system-ui, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-base);
+      color: var(--text-primary);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 9999px; }
+
+    /* ── Animations ── */
+    @keyframes sonar-ring {
+      0% { transform: scale(1); opacity: 0.5; }
+      100% { transform: scale(2.4); opacity: 0; }
+    }
+
+    @keyframes sonar-ring-2 {
+      0% { transform: scale(1); opacity: 0.35; }
+      100% { transform: scale(2.8); opacity: 0; }
+    }
+
+    @keyframes sonar-ring-3 {
+      0% { transform: scale(1); opacity: 0.2; }
+      100% { transform: scale(3.2); opacity: 0; }
+    }
+
+    @keyframes gentle-pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.04); }
+    }
+
+    @keyframes float-orbit {
+      0%, 100% { transform: translateY(0px) translateX(0px); }
+      25% { transform: translateY(-6px) translateX(3px); }
+      50% { transform: translateY(-2px) translateX(-4px); }
+      75% { transform: translateY(4px) translateX(2px); }
+    }
+
+    @keyframes group-pulse-ring {
+      0%, 100% { box-shadow: 0 0 0 0px rgba(245,158,11,0.4); }
+      50% { box-shadow: 0 0 0 8px rgba(245,158,11,0); }
+    }
+
+    @keyframes fade-in-up {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes emoji-pop {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.3); }
+      100% { transform: scale(1); }
+    }
+
+    .animate-fade-in-up {
+      animation: fade-in-up 0.5s ease-out both;
+    }
+
+    .sonar-center {
+      animation: gentle-pulse 3s ease-in-out infinite;
+    }
+
+    .sonar-ring-1 {
+      animation: sonar-ring 3s ease-out infinite;
+    }
+
+    .sonar-ring-2 {
+      animation: sonar-ring-2 3s ease-out infinite 0.8s;
+    }
+
+    .sonar-ring-3 {
+      animation: sonar-ring-3 3s ease-out infinite 1.6s;
+    }
+
+    .float-avatar {
+      animation: float-orbit 4s ease-in-out infinite;
+    }
+
+    .float-avatar:nth-child(2) { animation-delay: 0.5s; }
+    .float-avatar:nth-child(3) { animation-delay: 1s; }
+    .float-avatar:nth-child(4) { animation-delay: 1.5s; }
+    .float-avatar:nth-child(5) { animation-delay: 2s; }
+
+    .group-ring-pulse {
+      animation: group-pulse-ring 2s ease-in-out infinite;
+    }
+
+    /* ── Interactive states ── */
+    .interactive {
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+
+    .interactive:hover {
+      transform: translateY(-1px);
+    }
+
+    .interactive:active {
+      transform: scale(0.97);
+    }
+
+    .emoji-btn:active {
+      animation: emoji-pop 0.3s ease;
+    }
+
+    /* ── Privacy card selection ── */
+    .privacy-card {
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+      border: 2px solid var(--border-color);
+    }
+
+    .privacy-card:hover {
+      transform: scale(1.02);
+    }
+
+    .privacy-card.selected {
+      transform: scale(1.03);
+    }
+
+    .privacy-card.selected.private-card {
+      border-color: var(--private-accent);
+      box-shadow: 0 0 0 4px rgba(99,102,241,0.2), 0 8px 32px rgba(99,102,241,0.15);
+    }
+
+    .privacy-card.selected.group-card {
+      border-color: var(--group-accent);
+      box-shadow: 0 0 0 4px rgba(245,158,11,0.2), 0 8px 32px rgba(245,158,11,0.15);
+    }
+
+    .privacy-card.selected.public-card {
+      border-color: var(--public-accent);
+      box-shadow: 0 0 0 4px rgba(20,184,166,0.2), 0 8px 32px rgba(20,184,166,0.15);
+    }
+
+    /* ── Invite avatar states ── */
+    .invite-avatar {
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+
+    .invite-avatar:hover {
+      transform: scale(1.1);
+    }
+
+    .invite-avatar.invited {
+      box-shadow: 0 0 0 3px #22c55e;
+    }
+
+    /* ── Follow button ── */
+    .follow-btn {
+      transition: all 0.2s ease;
+    }
+
+    .follow-btn.following {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+    }
+
+    /* ── Section wrapper ── */
+    .mockup-section {
+      max-width: 390px;
+      margin: 0 auto;
+      border: 1px solid var(--border-color);
+      border-radius: 24px;
+      overflow: hidden;
+      background: var(--bg-base);
+      box-shadow: 0 4px 32px rgba(0,0,0,0.3);
+    }
+
+    /* ── Tab bar ── */
+    .tab-active {
+      color: var(--primary);
+    }
+
+    .tab-inactive {
+      color: var(--text-muted);
+    }
+
+    /* ── Drag/drop zone ── */
+    .drop-zone {
+      border: 2px dashed var(--border-color);
+      transition: all 0.2s ease;
+    }
+
+    .drop-zone:hover {
+      border-color: var(--primary);
+      background: rgba(139, 92, 246, 0.05);
+    }
+
+    /* ── Masonry grid ── */
+    .masonry-grid {
+      columns: 2;
+      column-gap: 8px;
+    }
+
+    .masonry-item {
+      break-inside: avoid;
+      margin-bottom: 8px;
+      border-radius: 8px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* ── Category pills scroll ── */
+    .pills-scroll {
+      overflow-x: auto;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .pills-scroll::-webkit-scrollbar { display: none; }
+
+    /* ── Responsive ── */
+    @media (min-width: 768px) {
+      .mockup-section {
+        max-width: 420px;
+      }
+    }
+
+    @media (min-width: 1024px) {
+      .section-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 48px;
+        max-width: 900px;
+      }
+      .mockup-section {
+        max-width: 100%;
+      }
+    }
+
+    /* ── Progress dots ── */
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 9999px;
+      background: var(--border-color);
+      transition: all 0.3s ease;
+    }
+
+    .dot.active {
+      width: 24px;
+      background: var(--primary);
+    }
+
+    /* ── Lightbox ── */
+    .lightbox-overlay {
+      background: rgba(0,0,0,0.95);
+    }
+  </style>
+</head>
+<body class="p-4 md:p-8 lg:p-12">
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- HEADER + DARK MODE TOGGLE              -->
+  <!-- ═══════════════════════════════════════ -->
+  <header class="max-w-5xl mx-auto mb-12 flex items-center justify-between">
+    <div>
+      <h1 class="text-3xl md:text-4xl font-bold tracking-tight" style="color: var(--text-primary);">
+        Photopods
+      </h1>
+      <p class="mt-1 text-sm" style="color: var(--text-secondary);">
+        Design Mockups &mdash; Interactive Prototype
+      </p>
+      <p class="mt-0.5 text-xs" style="color: var(--text-muted);">
+        Apple Shared Albums &times; AirDrop &times; Reddit-for-Media
+      </p>
+    </div>
+    <button
+      id="theme-toggle"
+      onclick="toggleTheme()"
+      class="interactive flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium"
+      style="background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary);"
+    >
+      <span id="theme-icon">&#9790;</span>
+      <span id="theme-label">Light</span>
+    </button>
+  </header>
+
+  <main class="max-w-5xl mx-auto space-y-16">
+
+    <!-- ═══════════════════════════════════════ -->
+    <!-- SCREEN 1: POD CREATION FLOW            -->
+    <!-- ═══════════════════════════════════════ -->
+    <section>
+      <div class="mb-6 text-center">
+        <span class="inline-block text-xs font-semibold tracking-widest uppercase px-3 py-1 rounded-full" style="background: var(--bg-card); color: var(--primary); border: 1px solid var(--border-color);">Screen 1</span>
+        <h2 class="text-2xl font-bold mt-3" style="color: var(--text-primary);">Pod Creation Flow</h2>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Three-step guided creation with progress dots</p>
+      </div>
+
+      <!-- Tabs to switch between steps -->
+      <div class="flex justify-center gap-2 mb-6">
+        <button onclick="showStep(1)" class="step-tab interactive text-xs font-semibold px-4 py-2 rounded-full" style="background: var(--primary); color: white;" data-step="1">Step 1</button>
+        <button onclick="showStep(2)" class="step-tab interactive text-xs font-semibold px-4 py-2 rounded-full" style="background: var(--bg-card); color: var(--text-secondary); border: 1px solid var(--border-color);" data-step="2">Step 2</button>
+        <button onclick="showStep(3)" class="step-tab interactive text-xs font-semibold px-4 py-2 rounded-full" style="background: var(--bg-card); color: var(--text-secondary); border: 1px solid var(--border-color);" data-step="3">Step 3</button>
+      </div>
+
+      <div class="mockup-section mx-auto">
+        <!-- Step 1: Name & Description -->
+        <div id="step-1" class="step-content p-6">
+          <!-- Status bar mock -->
+          <div class="flex justify-between items-center text-xs mb-6" style="color: var(--text-muted);">
+            <span>9:41</span>
+            <div class="flex gap-1">
+              <span>&#9679;&#9679;&#9679;&#9679;</span>
+              <span>&#128267;</span>
+            </div>
+          </div>
+
+          <!-- Close button -->
+          <div class="flex justify-between items-center mb-8">
+            <button class="interactive w-8 h-8 rounded-full flex items-center justify-center" style="background: var(--bg-elevated);">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+            <span class="text-xs font-medium" style="color: var(--text-muted);">New Pod</span>
+            <div class="w-8"></div>
+          </div>
+
+          <!-- Progress dots -->
+          <div class="flex justify-center gap-2 mb-8">
+            <div class="dot active"></div>
+            <div class="dot"></div>
+            <div class="dot"></div>
+          </div>
+
+          <h3 class="text-xl font-bold mb-2" style="color: var(--text-primary);">What should we call it?</h3>
+          <p class="text-sm mb-6" style="color: var(--text-secondary);">Give your pod a name that captures the vibe.</p>
+
+          <!-- Pod Name Input -->
+          <div class="mb-4">
+            <label class="block text-xs font-medium mb-2" style="color: var(--text-secondary);">Pod Name</label>
+            <div class="relative">
+              <input
+                type="text"
+                value="Summer Road Trip 2026"
+                class="w-full px-4 py-3 rounded-xl text-sm outline-none"
+                style="background: var(--bg-elevated); border: 1px solid var(--border-color); color: var(--text-primary);"
+              />
+              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs" style="color: var(--text-muted);">22/50</span>
+            </div>
+          </div>
+
+          <!-- Description -->
+          <div class="mb-8">
+            <label class="block text-xs font-medium mb-2" style="color: var(--text-secondary);">Description <span style="color: var(--text-muted);">(optional)</span></label>
+            <div class="relative">
+              <textarea
+                rows="3"
+                placeholder="What's this pod about?"
+                class="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none"
+                style="background: var(--bg-elevated); border: 1px solid var(--border-color); color: var(--text-primary);"
+              >Cross-country trip with the crew. Joshua Tree to Big Sur.</textarea>
+              <span class="absolute right-3 bottom-3 text-xs" style="color: var(--text-muted);">54/200</span>
+            </div>
+          </div>
+
+          <!-- Next Button -->
+          <button class="interactive w-full py-3.5 rounded-xl text-sm font-semibold" style="background: var(--primary); color: white;">
+            Continue
+          </button>
+        </div>
+
+        <!-- Step 2: Privacy Level -->
+        <div id="step-2" class="step-content p-6" style="display: none;">
+          <!-- Status bar -->
+          <div class="flex justify-between items-center text-xs mb-6" style="color: var(--text-muted);">
+            <span>9:41</span>
+            <div class="flex gap-1">
+              <span>&#9679;&#9679;&#9679;&#9679;</span>
+              <span>&#128267;</span>
+            </div>
+          </div>
+
+          <!-- Back + Close -->
+          <div class="flex justify-between items-center mb-8">
+            <button class="interactive w-8 h-8 rounded-full flex items-center justify-center" style="background: var(--bg-elevated);">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <span class="text-xs font-medium" style="color: var(--text-muted);">New Pod</span>
+            <div class="w-8"></div>
+          </div>
+
+          <!-- Progress dots -->
+          <div class="flex justify-center gap-2 mb-8">
+            <div class="dot"></div>
+            <div class="dot active"></div>
+            <div class="dot"></div>
+          </div>
+
+          <h3 class="text-xl font-bold mb-2" style="color: var(--text-primary);">Who can see this?</h3>
+          <p class="text-sm mb-6" style="color: var(--text-secondary);">Choose a privacy level for your pod.</p>
+
+          <!-- Privacy Cards -->
+          <div class="space-y-3 mb-8">
+            <!-- Private -->
+            <div class="privacy-card private-card rounded-2xl p-4 flex items-start gap-4" onclick="selectPrivacy(this, 'private')" style="background: var(--bg-card);">
+              <div class="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style="background: rgba(99,102,241,0.15);">
+                <svg width="24" height="24" fill="none" stroke="#6366f1" stroke-width="2" viewBox="0 0 24 24">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0110 0v4"/>
+                </svg>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between">
+                  <h4 class="font-semibold text-sm" style="color: var(--text-primary);">Private</h4>
+                  <div class="privacy-check w-5 h-5 rounded-full border-2 flex items-center justify-center" style="border-color: var(--border-color);">
+                    <svg class="hidden" width="12" height="12" fill="none" stroke="white" stroke-width="3" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+                  </div>
+                </div>
+                <p class="text-xs mt-0.5" style="color: var(--text-secondary);">Just you. A personal media vault.</p>
+              </div>
+            </div>
+
+            <!-- Group (selected by default) -->
+            <div class="privacy-card group-card selected rounded-2xl p-4 flex items-start gap-4" onclick="selectPrivacy(this, 'group')" style="background: var(--bg-card);">
+              <div class="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 group-ring-pulse" style="background: rgba(245,158,11,0.15);">
+                <svg width="24" height="24" fill="none" stroke="#f59e0b" stroke-width="2" viewBox="0 0 24 24">
+                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+                  <circle cx="9" cy="7" r="4"/>
+                  <path d="M23 21v-2a4 4 0 00-3-3.87"/>
+                  <path d="M16 3.13a4 4 0 010 7.75"/>
+                </svg>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between">
+                  <h4 class="font-semibold text-sm" style="color: var(--text-primary);">Group</h4>
+                  <div class="privacy-check w-5 h-5 rounded-full flex items-center justify-center" style="background: var(--group-accent);">
+                    <svg width="12" height="12" fill="none" stroke="white" stroke-width="3" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+                  </div>
+                </div>
+                <p class="text-xs mt-0.5" style="color: var(--text-secondary);">Friends only. Share moments together.</p>
+              </div>
+            </div>
+
+            <!-- Public -->
+            <div class="privacy-card public-card rounded-2xl p-4 flex items-start gap-4" onclick="selectPrivacy(this, 'public')" style="background: var(--bg-card);">
+              <div class="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style="background: rgba(20,184,166,0.15);">
+                <svg width="24" height="24" fill="none" stroke="#14b8a6" stroke-width="2" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="2" y1="12" x2="22" y2="12"/>
+                  <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+                </svg>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between">
+                  <h4 class="font-semibold text-sm" style="color: var(--text-primary);">Public</h4>
+                  <div class="privacy-check w-5 h-5 rounded-full border-2 flex items-center justify-center" style="border-color: var(--border-color);">
+                    <svg class="hidden" width="12" height="12" fill="none" stroke="white" stroke-width="3" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+                  </div>
+                </div>
+                <p class="text-xs mt-0.5" style="color: var(--text-secondary);">Open to everyone. Start a community around a topic.</p>
+              </div>
+            </div>
+          </div>
+
+          <button class="interactive w-full py-3.5 rounded-xl text-sm font-semibold" style="background: var(--primary); color: white;">
+            Continue
+          </button>
+        </div>
+
+        <!-- Step 3: Cover Photo -->
+        <div id="step-3" class="step-content p-6" style="display: none;">
+          <!-- Status bar -->
+          <div class="flex justify-between items-center text-xs mb-6" style="color: var(--text-muted);">
+            <span>9:41</span>
+            <div class="flex gap-1">
+              <span>&#9679;&#9679;&#9679;&#9679;</span>
+              <span>&#128267;</span>
+            </div>
+          </div>
+
+          <!-- Back + Close -->
+          <div class="flex justify-between items-center mb-8">
+            <button class="interactive w-8 h-8 rounded-full flex items-center justify-center" style="background: var(--bg-elevated);">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <span class="text-xs font-medium" style="color: var(--text-muted);">New Pod</span>
+            <div class="w-8"></div>
+          </div>
+
+          <!-- Progress dots -->
+          <div class="flex justify-center gap-2 mb-8">
+            <div class="dot"></div>
+            <div class="dot"></div>
+            <div class="dot active"></div>
+          </div>
+
+          <h3 class="text-xl font-bold mb-2" style="color: var(--text-primary);">Set the scene</h3>
+          <p class="text-sm mb-6" style="color: var(--text-secondary);">Add a cover photo to make your pod stand out.</p>
+
+          <!-- Drop Zone -->
+          <div class="drop-zone rounded-2xl p-8 flex flex-col items-center justify-center text-center mb-4" style="min-height: 220px;">
+            <div class="w-16 h-16 rounded-full flex items-center justify-center mb-4" style="background: var(--bg-elevated);">
+              <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="color: var(--text-muted);">
+                <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14"/>
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+              </svg>
+            </div>
+            <p class="text-sm font-medium mb-1" style="color: var(--text-primary);">Drag a photo here</p>
+            <p class="text-xs mb-4" style="color: var(--text-muted);">or tap to browse your library</p>
+            <button class="interactive px-4 py-2 rounded-lg text-xs font-medium" style="background: var(--bg-elevated); color: var(--text-primary); border: 1px solid var(--border-color);">
+              Choose Photo
+            </button>
+          </div>
+
+          <div class="flex gap-3">
+            <button class="interactive flex-1 py-3.5 rounded-xl text-sm font-medium" style="background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-color);">
+              Skip for now
+            </button>
+            <button class="interactive flex-1 py-3.5 rounded-xl text-sm font-semibold" style="background: var(--primary); color: white;">
+              Create Pod
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════ -->
+    <!-- SCREEN 2: AIRDROP-STYLE CIRCLE INVITE  -->
+    <!-- ═══════════════════════════════════════ -->
+    <section>
+      <div class="mb-6 text-center">
+        <span class="inline-block text-xs font-semibold tracking-widest uppercase px-3 py-1 rounded-full" style="background: var(--bg-card); color: var(--group-accent); border: 1px solid var(--border-color);">Screen 2</span>
+        <h2 class="text-2xl font-bold mt-3" style="color: var(--text-primary);">AirDrop-Style Circle Invite</h2>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">The signature UX -- sonar discovery with orbital avatars</p>
+      </div>
+
+      <div class="mockup-section mx-auto">
+        <!-- Sheet handle / modal appearance -->
+        <div class="pt-3 pb-1 flex justify-center">
+          <div class="w-10 h-1 rounded-full" style="background: var(--border-color);"></div>
+        </div>
+
+        <div class="p-6 pt-4">
+          <h3 class="text-lg font-bold text-center mb-1" style="color: var(--text-primary);">Invite to Pod</h3>
+          <p class="text-xs text-center mb-8" style="color: var(--text-secondary);">Nearby friends and contacts will appear</p>
+
+          <!-- Sonar Circle Area -->
+          <div class="relative flex items-center justify-center" style="height: 320px;">
+            <!-- Sonar rings -->
+            <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div class="sonar-ring-1 absolute rounded-full" style="width: 120px; height: 120px; border: 1px solid rgba(245,158,11,0.3);"></div>
+              <div class="sonar-ring-2 absolute rounded-full" style="width: 120px; height: 120px; border: 1px solid rgba(245,158,11,0.2);"></div>
+              <div class="sonar-ring-3 absolute rounded-full" style="width: 120px; height: 120px; border: 1px solid rgba(245,158,11,0.15);"></div>
+            </div>
+
+            <!-- Static guide rings -->
+            <div class="absolute rounded-full pointer-events-none" style="width: 200px; height: 200px; border: 1px solid var(--border-color); opacity: 0.3;"></div>
+            <div class="absolute rounded-full pointer-events-none" style="width: 280px; height: 280px; border: 1px solid var(--border-color); opacity: 0.15;"></div>
+
+            <!-- Center circle -->
+            <div class="sonar-center relative z-10 w-[120px] h-[120px] rounded-full flex flex-col items-center justify-center" style="background: linear-gradient(135deg, rgba(245,158,11,0.2), rgba(245,158,11,0.05)); border: 2px solid var(--group-accent);">
+              <svg width="28" height="28" fill="none" stroke="#f59e0b" stroke-width="1.5" viewBox="0 0 24 24" class="mb-1">
+                <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14"/>
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+              </svg>
+              <span class="text-xs font-semibold" style="color: var(--group-accent);">Road Trip</span>
+            </div>
+
+            <!-- Orbital avatars -->
+            <!-- Avatar 1: Sarah - top right -->
+            <div class="float-avatar invite-avatar invited absolute flex flex-col items-center" style="top: 24px; right: 50px;" onclick="toggleInvite(this)">
+              <div class="relative">
+                <div class="w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold" style="background: linear-gradient(135deg, #ec4899, #f43f5e); color: white; box-shadow: 0 0 0 3px #22c55e;">
+                  SM
+                </div>
+                <div class="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center" style="background: #22c55e;">
+                  <svg width="10" height="10" fill="none" stroke="white" stroke-width="3" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+              </div>
+              <span class="text-[10px] mt-1 font-medium" style="color: var(--text-secondary);">Sarah</span>
+            </div>
+
+            <!-- Avatar 2: Jake - top left -->
+            <div class="float-avatar invite-avatar absolute flex flex-col items-center" style="top: 40px; left: 40px;" onclick="toggleInvite(this)">
+              <div class="relative">
+                <div class="w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold" style="background: linear-gradient(135deg, #3b82f6, #6366f1); color: white;">
+                  JK
+                </div>
+              </div>
+              <span class="text-[10px] mt-1 font-medium" style="color: var(--text-secondary);">Jake</span>
+            </div>
+
+            <!-- Avatar 3: Maya - left -->
+            <div class="float-avatar invite-avatar invited absolute flex flex-col items-center" style="top: 150px; left: 16px;" onclick="toggleInvite(this)">
+              <div class="relative">
+                <div class="w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold" style="background: linear-gradient(135deg, #14b8a6, #06b6d4); color: white; box-shadow: 0 0 0 3px #22c55e;">
+                  MR
+                </div>
+                <div class="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center" style="background: #22c55e;">
+                  <svg width="10" height="10" fill="none" stroke="white" stroke-width="3" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+              </div>
+              <span class="text-[10px] mt-1 font-medium" style="color: var(--text-secondary);">Maya</span>
+            </div>
+
+            <!-- Avatar 4: Chris - bottom right -->
+            <div class="float-avatar invite-avatar absolute flex flex-col items-center" style="bottom: 30px; right: 40px;" onclick="toggleInvite(this)">
+              <div class="relative">
+                <div class="w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold" style="background: linear-gradient(135deg, #f59e0b, #ef4444); color: white;">
+                  CL
+                </div>
+              </div>
+              <span class="text-[10px] mt-1 font-medium" style="color: var(--text-secondary);">Chris</span>
+            </div>
+
+            <!-- Avatar 5: Nina - bottom left -->
+            <div class="float-avatar invite-avatar absolute flex flex-col items-center" style="bottom: 50px; left: 60px;" onclick="toggleInvite(this)">
+              <div class="relative">
+                <div class="w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold" style="background: linear-gradient(135deg, #a855f7, #8b5cf6); color: white;">
+                  NP
+                </div>
+              </div>
+              <span class="text-[10px] mt-1 font-medium" style="color: var(--text-secondary);">Nina</span>
+            </div>
+          </div>
+
+          <!-- Invite count -->
+          <p class="text-center text-xs mb-6" style="color: var(--text-muted);">
+            <span style="color: #22c55e; font-weight: 600;">2 invited</span> &middot; tap a contact to invite
+          </p>
+
+          <!-- Action rows -->
+          <div class="space-y-3 mb-4">
+            <!-- Share Link -->
+            <button class="interactive w-full py-3 rounded-xl text-sm font-medium flex items-center justify-center gap-2" style="background: var(--bg-elevated); color: var(--text-primary); border: 1px solid var(--border-color);">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+                <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+              </svg>
+              Share Invite Link
+            </button>
+
+            <!-- Add by Username -->
+            <div class="flex gap-2">
+              <input
+                type="text"
+                placeholder="Add by username..."
+                class="flex-1 px-4 py-3 rounded-xl text-sm outline-none"
+                style="background: var(--bg-elevated); border: 1px solid var(--border-color); color: var(--text-primary);"
+              />
+              <button class="interactive px-4 py-3 rounded-xl" style="background: var(--primary); color: white;">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                  <path d="M12 5v14M5 12h14"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Done button -->
+          <button class="interactive w-full py-3.5 rounded-xl text-sm font-semibold" style="background: var(--primary); color: white;">
+            Done
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════ -->
+    <!-- SCREEN 3: POD GALLERY VIEW             -->
+    <!-- ═══════════════════════════════════════ -->
+    <section>
+      <div class="mb-6 text-center">
+        <span class="inline-block text-xs font-semibold tracking-widest uppercase px-3 py-1 rounded-full" style="background: var(--bg-card); color: var(--public-accent); border: 1px solid var(--border-color);">Screen 3</span>
+        <h2 class="text-2xl font-bold mt-3" style="color: var(--text-primary);">Pod Gallery View</h2>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Masonry grid with reactions, tabs, and FAB</p>
+      </div>
+
+      <div class="mockup-section mx-auto">
+        <!-- Status bar -->
+        <div class="flex justify-between items-center text-xs px-6 pt-3 pb-1" style="color: var(--text-muted);">
+          <span>9:41</span>
+          <div class="flex gap-1">
+            <span>&#9679;&#9679;&#9679;&#9679;</span>
+            <span>&#128267;</span>
+          </div>
+        </div>
+
+        <!-- Pod Header -->
+        <div class="px-6 pt-3 pb-4">
+          <div class="flex items-center gap-2 mb-3">
+            <button class="interactive w-8 h-8 rounded-full flex items-center justify-center" style="background: var(--bg-elevated);">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <div class="flex-1">
+              <div class="flex items-center gap-2">
+                <h3 class="text-lg font-bold" style="color: var(--text-primary);">Summer Road Trip 2026</h3>
+              </div>
+            </div>
+            <button class="interactive w-8 h-8 rounded-full flex items-center justify-center" style="background: var(--bg-elevated);">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Badges + stats -->
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold" style="background: rgba(245,158,11,0.15); color: var(--group-accent);">
+              <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+              Group
+            </span>
+            <span class="text-[10px]" style="color: var(--text-muted);">5 members</span>
+            <span style="color: var(--text-muted);">&middot;</span>
+            <span class="text-[10px]" style="color: var(--text-muted);">47 photos</span>
+            <span style="color: var(--text-muted);">&middot;</span>
+            <span class="text-[10px]" style="color: var(--text-muted);">3 videos</span>
+          </div>
+        </div>
+
+        <!-- Tab bar: Grid / Timeline -->
+        <div class="flex px-6 gap-1 mb-4">
+          <button class="gallery-tab interactive flex-1 py-2 rounded-lg text-xs font-semibold text-center" style="background: var(--primary); color: white;" data-tab="grid" onclick="switchGalleryTab(this, 'grid')">
+            Grid
+          </button>
+          <button class="gallery-tab interactive flex-1 py-2 rounded-lg text-xs font-medium text-center" style="background: var(--bg-elevated); color: var(--text-secondary);" data-tab="timeline" onclick="switchGalleryTab(this, 'timeline')">
+            Timeline
+          </button>
+        </div>
+
+        <!-- Masonry Grid -->
+        <div class="px-4 pb-20 relative" id="gallery-grid">
+          <div class="masonry-grid">
+            <!-- Item 1 -->
+            <div class="masonry-item interactive" style="background: linear-gradient(135deg, #f59e0b, #ef4444); height: 180px;">
+              <div class="absolute bottom-0 left-0 right-0 p-2" style="background: linear-gradient(transparent, rgba(0,0,0,0.6));">
+                <span class="text-[10px]" style="color: rgba(255,255,255,0.9);">&#10084;&#65039; 5 &#128293; 2</span>
+              </div>
+            </div>
+            <!-- Item 2 (video) -->
+            <div class="masonry-item interactive" style="background: linear-gradient(135deg, #3b82f6, #6366f1); height: 130px;">
+              <div class="absolute inset-0 flex items-center justify-center">
+                <div class="w-8 h-8 rounded-full flex items-center justify-center" style="background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);">
+                  <svg width="14" height="14" fill="white" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
+                </div>
+              </div>
+              <div class="absolute bottom-0 left-0 right-0 p-2" style="background: linear-gradient(transparent, rgba(0,0,0,0.6));">
+                <span class="text-[10px]" style="color: rgba(255,255,255,0.9);">&#10084;&#65039; 3</span>
+              </div>
+            </div>
+            <!-- Item 3 -->
+            <div class="masonry-item interactive" style="background: linear-gradient(135deg, #14b8a6, #06b6d4); height: 200px;">
+              <div class="absolute bottom-0 left-0 right-0 p-2" style="background: linear-gradient(transparent, rgba(0,0,0,0.6));">
+                <span class="text-[10px]" style="color: rgba(255,255,255,0.9);">&#10084;&#65039; 8 &#128293; 4 &#128247; 1</span>
+              </div>
+            </div>
+            <!-- Item 4 -->
+            <div class="masonry-item interactive" style="background: linear-gradient(135deg, #a855f7, #ec4899); height: 150px;">
+              <div class="absolute bottom-0 left-0 right-0 p-2" style="background: linear-gradient(transparent, rgba(0,0,0,0.6));">
+                <span class="text-[10px]" style="color: rgba(255,255,255,0.9);">&#128293; 2</span>
+              </div>
+            </div>
+            <!-- Item 5 -->
+            <div class="masonry-item interactive" style="background: linear-gradient(135deg, #eab308, #84cc16); height: 170px;">
+              <div class="absolute bottom-0 left-0 right-0 p-2" style="background: linear-gradient(transparent, rgba(0,0,0,0.6));">
+                <span class="text-[10px]" style="color: rgba(255,255,255,0.9);">&#10084;&#65039; 12 &#128293; 6 &#127942; 1</span>
+              </div>
+            </div>
+            <!-- Item 6 (video) -->
+            <div class="masonry-item interactive" style="background: linear-gradient(135deg, #f43f5e, #fb923c); height: 120px;">
+              <div class="absolute inset-0 flex items-center justify-center">
+                <div class="w-8 h-8 rounded-full flex items-center justify-center" style="background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);">
+                  <svg width="14" height="14" fill="white" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
+                </div>
+              </div>
+              <div class="absolute bottom-0 left-0 right-0 p-2" style="background: linear-gradient(transparent, rgba(0,0,0,0.6));">
+                <span class="text-[10px]" style="color: rgba(255,255,255,0.9);">&#128514; 3 &#128293; 1</span>
+              </div>
+            </div>
+            <!-- Item 7 -->
+            <div class="masonry-item interactive" style="background: linear-gradient(135deg, #0ea5e9, #8b5cf6); height: 190px;">
+              <div class="absolute bottom-0 left-0 right-0 p-2" style="background: linear-gradient(transparent, rgba(0,0,0,0.6));">
+                <span class="text-[10px]" style="color: rgba(255,255,255,0.9);">&#10084;&#65039; 4 &#129321; 2</span>
+              </div>
+            </div>
+            <!-- Item 8 -->
+            <div class="masonry-item interactive" style="background: linear-gradient(135deg, #22d3ee, #a3e635); height: 140px;">
+              <div class="absolute bottom-0 left-0 right-0 p-2" style="background: linear-gradient(transparent, rgba(0,0,0,0.6));">
+                <span class="text-[10px]" style="color: rgba(255,255,255,0.9);">&#128079; 6</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Timeline view (hidden by default) -->
+          <div id="gallery-timeline" style="display: none;" class="space-y-4">
+            <div>
+              <p class="text-xs font-semibold mb-2" style="color: var(--text-muted);">Today</p>
+              <div class="grid grid-cols-3 gap-1.5">
+                <div class="rounded-lg aspect-square" style="background: linear-gradient(135deg, #f59e0b, #ef4444);"></div>
+                <div class="rounded-lg aspect-square" style="background: linear-gradient(135deg, #3b82f6, #6366f1);"></div>
+                <div class="rounded-lg aspect-square" style="background: linear-gradient(135deg, #14b8a6, #06b6d4);"></div>
+              </div>
+            </div>
+            <div>
+              <p class="text-xs font-semibold mb-2" style="color: var(--text-muted);">Yesterday</p>
+              <div class="grid grid-cols-3 gap-1.5">
+                <div class="rounded-lg aspect-square" style="background: linear-gradient(135deg, #a855f7, #ec4899);"></div>
+                <div class="rounded-lg aspect-square" style="background: linear-gradient(135deg, #eab308, #84cc16);"></div>
+                <div class="rounded-lg aspect-square" style="background: linear-gradient(135deg, #f43f5e, #fb923c);"></div>
+                <div class="rounded-lg aspect-square" style="background: linear-gradient(135deg, #0ea5e9, #8b5cf6);"></div>
+                <div class="rounded-lg aspect-square" style="background: linear-gradient(135deg, #22d3ee, #a3e635);"></div>
+              </div>
+            </div>
+            <div>
+              <p class="text-xs font-semibold mb-2" style="color: var(--text-muted);">July 17</p>
+              <div class="grid grid-cols-3 gap-1.5">
+                <div class="rounded-lg aspect-square" style="background: linear-gradient(135deg, #8b5cf6, #3b82f6);"></div>
+                <div class="rounded-lg aspect-square" style="background: linear-gradient(135deg, #ef4444, #f97316);"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- FAB -->
+          <button class="interactive fixed-fab w-14 h-14 rounded-full flex items-center justify-center shadow-xl" style="background: var(--primary); color: white; position: absolute; bottom: 24px; right: 20px; box-shadow: 0 8px 24px rgba(139,92,246,0.4);">
+            <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════ -->
+    <!-- SCREEN 4: EMOJI REACTION TRAY          -->
+    <!-- ═══════════════════════════════════════ -->
+    <section>
+      <div class="mb-6 text-center">
+        <span class="inline-block text-xs font-semibold tracking-widest uppercase px-3 py-1 rounded-full" style="background: var(--bg-card); color: #ef4444; border: 1px solid var(--border-color);">Screen 4</span>
+        <h2 class="text-2xl font-bold mt-3" style="color: var(--text-primary);">Emoji Reaction Tray</h2>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Lightbox view with curated reaction pills</p>
+      </div>
+
+      <div class="mockup-section mx-auto overflow-hidden">
+        <!-- Lightbox -->
+        <div class="lightbox-overlay relative" style="background: #000;">
+          <!-- Status bar -->
+          <div class="flex justify-between items-center text-xs px-6 pt-3 pb-2" style="color: rgba(255,255,255,0.5);">
+            <span>9:41</span>
+            <div class="flex gap-1">
+              <span>&#9679;&#9679;&#9679;&#9679;</span>
+              <span>&#128267;</span>
+            </div>
+          </div>
+
+          <!-- Top bar -->
+          <div class="flex justify-between items-center px-4 pb-4">
+            <button class="interactive w-8 h-8 rounded-full flex items-center justify-center" style="background: rgba(255,255,255,0.1);">
+              <svg width="16" height="16" fill="none" stroke="white" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+            <span class="text-xs" style="color: rgba(255,255,255,0.5);">12 of 47</span>
+            <button class="interactive w-8 h-8 rounded-full flex items-center justify-center" style="background: rgba(255,255,255,0.1);">
+              <svg width="16" height="16" fill="none" stroke="white" stroke-width="2" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Photo placeholder -->
+          <div class="relative mx-4 rounded-xl overflow-hidden" style="height: 300px; background: linear-gradient(135deg, #f59e0b 0%, #ef4444 40%, #ec4899 100%);">
+            <!-- Prev/Next arrows -->
+            <button class="interactive absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full flex items-center justify-center" style="background: rgba(0,0,0,0.4); backdrop-filter: blur(4px);">
+              <svg width="14" height="14" fill="none" stroke="white" stroke-width="2" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <button class="interactive absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full flex items-center justify-center" style="background: rgba(0,0,0,0.4); backdrop-filter: blur(4px);">
+              <svg width="14" height="14" fill="none" stroke="white" stroke-width="2" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+          </div>
+
+          <!-- Caption & attribution -->
+          <div class="px-6 pt-4 pb-3">
+            <p class="text-xs" style="color: rgba(255,255,255,0.4);">by <span style="color: rgba(255,255,255,0.7); font-weight: 600;">@sarahm</span></p>
+            <p class="text-sm mt-1" style="color: rgba(255,255,255,0.85);">Golden hour at Joshua Tree. This light was unreal.</p>
+          </div>
+
+          <!-- Emoji Reaction Tray -->
+          <div class="px-4 pb-6">
+            <div class="pills-scroll flex gap-2 pb-2 overflow-x-auto">
+              <!-- Each emoji pill -->
+              <button class="emoji-btn interactive shrink-0 flex flex-col items-center px-3 py-2 rounded-2xl" style="background: rgba(255,255,255,0.1); min-width: 52px;" onclick="toggleEmoji(this)">
+                <span class="text-lg leading-none">&#10084;&#65039;</span>
+                <span class="text-[10px] mt-1 font-medium" style="color: rgba(255,255,255,0.6);">12</span>
+              </button>
+              <button class="emoji-btn interactive shrink-0 flex flex-col items-center px-3 py-2 rounded-2xl" style="background: rgba(139,92,246,0.3); border: 2px solid var(--primary); min-width: 52px;" onclick="toggleEmoji(this)">
+                <span class="text-lg leading-none">&#128293;</span>
+                <span class="text-[10px] mt-1 font-medium" style="color: rgba(255,255,255,0.9);">8</span>
+              </button>
+              <button class="emoji-btn interactive shrink-0 flex flex-col items-center px-3 py-2 rounded-2xl" style="background: rgba(255,255,255,0.1); min-width: 52px;" onclick="toggleEmoji(this)">
+                <span class="text-lg leading-none">&#128514;</span>
+                <span class="text-[10px] mt-1 font-medium" style="color: rgba(255,255,255,0.6);">2</span>
+              </button>
+              <button class="emoji-btn interactive shrink-0 flex flex-col items-center px-3 py-2 rounded-2xl" style="background: rgba(255,255,255,0.1); min-width: 52px;" onclick="toggleEmoji(this)">
+                <span class="text-lg leading-none">&#128525;</span>
+                <span class="text-[10px] mt-1 font-medium" style="color: rgba(255,255,255,0.6);">5</span>
+              </button>
+              <button class="emoji-btn interactive shrink-0 flex flex-col items-center px-3 py-2 rounded-2xl" style="background: rgba(255,255,255,0.1); min-width: 52px;" onclick="toggleEmoji(this)">
+                <span class="text-lg leading-none">&#129321;</span>
+                <span class="text-[10px] mt-1 font-medium" style="color: rgba(255,255,255,0.6);">3</span>
+              </button>
+              <button class="emoji-btn interactive shrink-0 flex flex-col items-center px-3 py-2 rounded-2xl" style="background: rgba(255,255,255,0.1); min-width: 52px;" onclick="toggleEmoji(this)">
+                <span class="text-lg leading-none">&#128079;</span>
+                <span class="text-[10px] mt-1 font-medium" style="color: rgba(255,255,255,0.6);">1</span>
+              </button>
+              <button class="emoji-btn interactive shrink-0 flex flex-col items-center px-3 py-2 rounded-2xl" style="background: rgba(255,255,255,0.1); min-width: 52px;" onclick="toggleEmoji(this)">
+                <span class="text-lg leading-none">&#128558;</span>
+                <span class="text-[10px] mt-1 font-medium" style="color: rgba(255,255,255,0.6);">0</span>
+              </button>
+              <button class="emoji-btn interactive shrink-0 flex flex-col items-center px-3 py-2 rounded-2xl" style="background: rgba(255,255,255,0.1); min-width: 52px;" onclick="toggleEmoji(this)">
+                <span class="text-lg leading-none">&#129395;</span>
+                <span class="text-[10px] mt-1 font-medium" style="color: rgba(255,255,255,0.6);">4</span>
+              </button>
+              <button class="emoji-btn interactive shrink-0 flex flex-col items-center px-3 py-2 rounded-2xl" style="background: rgba(255,255,255,0.1); min-width: 52px;" onclick="toggleEmoji(this)">
+                <span class="text-lg leading-none">&#128247;</span>
+                <span class="text-[10px] mt-1 font-medium" style="color: rgba(255,255,255,0.6);">6</span>
+              </button>
+              <button class="emoji-btn interactive shrink-0 flex flex-col items-center px-3 py-2 rounded-2xl" style="background: rgba(255,255,255,0.1); min-width: 52px;" onclick="toggleEmoji(this)">
+                <span class="text-lg leading-none">&#127942;</span>
+                <span class="text-[10px] mt-1 font-medium" style="color: rgba(255,255,255,0.6);">1</span>
+              </button>
+              <button class="emoji-btn interactive shrink-0 flex flex-col items-center px-3 py-2 rounded-2xl" style="background: rgba(255,255,255,0.1); min-width: 52px;" onclick="toggleEmoji(this)">
+                <span class="text-lg leading-none">&#128175;</span>
+                <span class="text-[10px] mt-1 font-medium" style="color: rgba(255,255,255,0.6);">2</span>
+              </button>
+              <button class="emoji-btn interactive shrink-0 flex flex-col items-center px-3 py-2 rounded-2xl" style="background: rgba(255,255,255,0.1); min-width: 52px;" onclick="toggleEmoji(this)">
+                <span class="text-lg leading-none">&#128078;</span>
+                <span class="text-[10px] mt-1 font-medium" style="color: rgba(255,255,255,0.6);">0</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════ -->
+    <!-- SCREEN 5: PUBLIC POD DISCOVERY FEED    -->
+    <!-- ═══════════════════════════════════════ -->
+    <section>
+      <div class="mb-6 text-center">
+        <span class="inline-block text-xs font-semibold tracking-widest uppercase px-3 py-1 rounded-full" style="background: var(--bg-card); color: var(--public-accent); border: 1px solid var(--border-color);">Screen 5</span>
+        <h2 class="text-2xl font-bold mt-3" style="color: var(--text-primary);">Public Pod Discovery Feed</h2>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Browse trending pods, categories, and community content</p>
+      </div>
+
+      <div class="mockup-section mx-auto">
+        <!-- Status bar -->
+        <div class="flex justify-between items-center text-xs px-6 pt-3 pb-1" style="color: var(--text-muted);">
+          <span>9:41</span>
+          <div class="flex gap-1">
+            <span>&#9679;&#9679;&#9679;&#9679;</span>
+            <span>&#128267;</span>
+          </div>
+        </div>
+
+        <div class="px-4 pt-3 pb-20">
+          <!-- Title -->
+          <h3 class="text-xl font-bold mb-4" style="color: var(--text-primary);">Discover</h3>
+
+          <!-- Search bar -->
+          <div class="relative mb-4">
+            <svg class="absolute left-3 top-1/2 -translate-y-1/2" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color: var(--text-muted);">
+              <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+            </svg>
+            <input
+              type="text"
+              placeholder="Search pods..."
+              class="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm outline-none"
+              style="background: var(--bg-elevated); border: 1px solid var(--border-color); color: var(--text-primary);"
+            />
+          </div>
+
+          <!-- Category pills -->
+          <div class="pills-scroll flex gap-2 mb-5 overflow-x-auto">
+            <button class="interactive shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold" style="background: var(--primary); color: white;">Trending</button>
+            <button class="interactive shrink-0 px-4 py-1.5 rounded-full text-xs font-medium" style="background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-color);">Nature</button>
+            <button class="interactive shrink-0 px-4 py-1.5 rounded-full text-xs font-medium" style="background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-color);">Events</button>
+            <button class="interactive shrink-0 px-4 py-1.5 rounded-full text-xs font-medium" style="background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-color);">Sports</button>
+            <button class="interactive shrink-0 px-4 py-1.5 rounded-full text-xs font-medium" style="background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-color);">Art</button>
+            <button class="interactive shrink-0 px-4 py-1.5 rounded-full text-xs font-medium" style="background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-color);">Travel</button>
+            <button class="interactive shrink-0 px-4 py-1.5 rounded-full text-xs font-medium" style="background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-color);">Food</button>
+            <button class="interactive shrink-0 px-4 py-1.5 rounded-full text-xs font-medium" style="background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-color);">Music</button>
+          </div>
+
+          <!-- Pod cards grid -->
+          <div class="grid grid-cols-2 gap-3">
+            <!-- Card 1 -->
+            <div class="interactive rounded-2xl overflow-hidden" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+              <div class="aspect-[4/3]" style="background: linear-gradient(135deg, #14b8a6, #0ea5e9);"></div>
+              <div class="p-3">
+                <h4 class="text-sm font-semibold truncate" style="color: var(--text-primary);">Pacific Coast Views</h4>
+                <p class="text-[10px] mt-0.5 truncate" style="color: var(--text-secondary);">Best coastal photography</p>
+                <p class="text-[10px] mt-1" style="color: var(--text-muted);">2.3k photos &middot; 142 followers</p>
+                <button class="follow-btn interactive w-full mt-2 py-1.5 rounded-lg text-[10px] font-semibold" style="border: 1px solid var(--primary); color: var(--primary);" onclick="toggleFollow(this)">
+                  Follow
+                </button>
+              </div>
+            </div>
+
+            <!-- Card 2 -->
+            <div class="interactive rounded-2xl overflow-hidden" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+              <div class="aspect-[4/3]" style="background: linear-gradient(135deg, #f59e0b, #ef4444);"></div>
+              <div class="p-3">
+                <h4 class="text-sm font-semibold truncate" style="color: var(--text-primary);">Sunset Chasers</h4>
+                <p class="text-[10px] mt-0.5 truncate" style="color: var(--text-secondary);">Golden hour obsessed</p>
+                <p class="text-[10px] mt-1" style="color: var(--text-muted);">891 photos &middot; 89 followers</p>
+                <button class="follow-btn following interactive w-full mt-2 py-1.5 rounded-lg text-[10px] font-semibold" style="background: var(--primary); color: white; border: 1px solid var(--primary);" onclick="toggleFollow(this)">
+                  Following
+                </button>
+              </div>
+            </div>
+
+            <!-- Card 3 -->
+            <div class="interactive rounded-2xl overflow-hidden" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+              <div class="aspect-[4/3]" style="background: linear-gradient(135deg, #a855f7, #6366f1);"></div>
+              <div class="p-3">
+                <h4 class="text-sm font-semibold truncate" style="color: var(--text-primary);">Street Photography NYC</h4>
+                <p class="text-[10px] mt-0.5 truncate" style="color: var(--text-secondary);">Urban moments captured</p>
+                <p class="text-[10px] mt-1" style="color: var(--text-muted);">5.1k photos &middot; 312 followers</p>
+                <button class="follow-btn interactive w-full mt-2 py-1.5 rounded-lg text-[10px] font-semibold" style="border: 1px solid var(--primary); color: var(--primary);" onclick="toggleFollow(this)">
+                  Follow
+                </button>
+              </div>
+            </div>
+
+            <!-- Card 4 -->
+            <div class="interactive rounded-2xl overflow-hidden" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+              <div class="aspect-[4/3]" style="background: linear-gradient(135deg, #22c55e, #14b8a6);"></div>
+              <div class="p-3">
+                <h4 class="text-sm font-semibold truncate" style="color: var(--text-primary);">Hiking Trails</h4>
+                <p class="text-[10px] mt-0.5 truncate" style="color: var(--text-secondary);">Trail running and hiking</p>
+                <p class="text-[10px] mt-1" style="color: var(--text-muted);">1.7k photos &middot; 204 followers</p>
+                <button class="follow-btn interactive w-full mt-2 py-1.5 rounded-lg text-[10px] font-semibold" style="border: 1px solid var(--primary); color: var(--primary);" onclick="toggleFollow(this)">
+                  Follow
+                </button>
+              </div>
+            </div>
+
+            <!-- Card 5 -->
+            <div class="interactive rounded-2xl overflow-hidden" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+              <div class="aspect-[4/3]" style="background: linear-gradient(135deg, #ec4899, #f43f5e);"></div>
+              <div class="p-3">
+                <h4 class="text-sm font-semibold truncate" style="color: var(--text-primary);">Concert Moments</h4>
+                <p class="text-[10px] mt-0.5 truncate" style="color: var(--text-secondary);">Live music captures</p>
+                <p class="text-[10px] mt-1" style="color: var(--text-muted);">3.4k photos &middot; 521 followers</p>
+                <button class="follow-btn interactive w-full mt-2 py-1.5 rounded-lg text-[10px] font-semibold" style="border: 1px solid var(--primary); color: var(--primary);" onclick="toggleFollow(this)">
+                  Follow
+                </button>
+              </div>
+            </div>
+
+            <!-- Card 6 -->
+            <div class="interactive rounded-2xl overflow-hidden" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+              <div class="aspect-[4/3]" style="background: linear-gradient(135deg, #0ea5e9, #3b82f6);"></div>
+              <div class="p-3">
+                <h4 class="text-sm font-semibold truncate" style="color: var(--text-primary);">Architecture Daily</h4>
+                <p class="text-[10px] mt-0.5 truncate" style="color: var(--text-secondary);">Buildings and structures</p>
+                <p class="text-[10px] mt-1" style="color: var(--text-muted);">967 photos &middot; 78 followers</p>
+                <button class="follow-btn interactive w-full mt-2 py-1.5 rounded-lg text-[10px] font-semibold" style="border: 1px solid var(--primary); color: var(--primary);" onclick="toggleFollow(this)">
+                  Follow
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom Tab Nav (Explore active) -->
+        <div class="sticky bottom-0 left-0 right-0 flex items-center justify-around py-2 px-4" style="background: var(--bg-card); border-top: 1px solid var(--border-color);">
+          <button class="interactive flex flex-col items-center gap-0.5 py-1 px-3 tab-inactive">
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+            </svg>
+            <span class="text-[10px]">Home</span>
+          </button>
+          <button class="interactive flex flex-col items-center gap-0.5 py-1 px-3 tab-active" style="color: var(--primary);">
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10"/>
+              <polygon points="16.24,7.76 14.12,14.12 7.76,16.24 9.88,9.88"/>
+            </svg>
+            <span class="text-[10px] font-semibold">Discover</span>
+          </button>
+          <button class="interactive flex flex-col items-center gap-0.5 py-1 px-3" style="color: var(--text-muted); margin-top: -12px;">
+            <div class="w-11 h-11 rounded-full flex items-center justify-center" style="background: var(--primary); color: white; box-shadow: 0 4px 16px rgba(139,92,246,0.4);">
+              <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
+            </div>
+            <span class="text-[10px]" style="color: var(--text-muted);">Create</span>
+          </button>
+          <button class="interactive flex flex-col items-center gap-0.5 py-1 px-3 tab-inactive">
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+            <span class="text-[10px]">Profile</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════ -->
+    <!-- SCREEN 6: BOTTOM TAB NAVIGATION        -->
+    <!-- ═══════════════════════════════════════ -->
+    <section>
+      <div class="mb-6 text-center">
+        <span class="inline-block text-xs font-semibold tracking-widest uppercase px-3 py-1 rounded-full" style="background: var(--bg-card); color: var(--primary); border: 1px solid var(--border-color);">Screen 6</span>
+        <h2 class="text-2xl font-bold mt-3" style="color: var(--text-primary);">Bottom Tab Navigation</h2>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Global mobile navigation with elevated create button</p>
+      </div>
+
+      <div class="mockup-section mx-auto">
+        <!-- Home screen content preview -->
+        <div class="px-4 pt-6 pb-4">
+          <!-- Status bar -->
+          <div class="flex justify-between items-center text-xs mb-6" style="color: var(--text-muted);">
+            <span>9:41</span>
+            <div class="flex gap-1">
+              <span>&#9679;&#9679;&#9679;&#9679;</span>
+              <span>&#128267;</span>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <h3 class="text-xl font-bold" style="color: var(--text-primary);">My Pods</h3>
+              <p class="text-xs" style="color: var(--text-secondary);">3 pods &middot; 94 total photos</p>
+            </div>
+            <div class="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold" style="background: linear-gradient(135deg, var(--primary), #ec4899); color: white;">
+              L
+            </div>
+          </div>
+
+          <!-- Pod list preview -->
+          <div class="space-y-3 mb-4">
+            <!-- Pod 1 -->
+            <div class="interactive flex items-center gap-3 p-3 rounded-xl" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+              <div class="w-14 h-14 rounded-xl shrink-0" style="background: linear-gradient(135deg, #f59e0b, #ef4444);"></div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <h4 class="text-sm font-semibold truncate" style="color: var(--text-primary);">Summer Road Trip 2026</h4>
+                  <span class="shrink-0 w-4 h-4 rounded-full flex items-center justify-center" style="background: rgba(245,158,11,0.15);">
+                    <svg width="8" height="8" fill="none" stroke="#f59e0b" stroke-width="2.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                  </span>
+                </div>
+                <p class="text-[10px]" style="color: var(--text-muted);">47 photos &middot; 5 members &middot; Updated 2h ago</p>
+              </div>
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color: var(--text-muted);"><path d="M9 18l6-6-6-6"/></svg>
+            </div>
+
+            <!-- Pod 2 -->
+            <div class="interactive flex items-center gap-3 p-3 rounded-xl" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+              <div class="w-14 h-14 rounded-xl shrink-0" style="background: linear-gradient(135deg, #6366f1, #8b5cf6);"></div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <h4 class="text-sm font-semibold truncate" style="color: var(--text-primary);">Camera Roll Selects</h4>
+                  <span class="shrink-0 w-4 h-4 rounded-full flex items-center justify-center" style="background: rgba(99,102,241,0.15);">
+                    <svg width="8" height="8" fill="none" stroke="#6366f1" stroke-width="2.5" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                  </span>
+                </div>
+                <p class="text-[10px]" style="color: var(--text-muted);">38 photos &middot; Just you &middot; Updated 1d ago</p>
+              </div>
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color: var(--text-muted);"><path d="M9 18l6-6-6-6"/></svg>
+            </div>
+
+            <!-- Pod 3 -->
+            <div class="interactive flex items-center gap-3 p-3 rounded-xl" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+              <div class="w-14 h-14 rounded-xl shrink-0" style="background: linear-gradient(135deg, #14b8a6, #06b6d4);"></div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <h4 class="text-sm font-semibold truncate" style="color: var(--text-primary);">Cityscape Challenge</h4>
+                  <span class="shrink-0 w-4 h-4 rounded-full flex items-center justify-center" style="background: rgba(20,184,166,0.15);">
+                    <svg width="8" height="8" fill="none" stroke="#14b8a6" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+                  </span>
+                </div>
+                <p class="text-[10px]" style="color: var(--text-muted);">9 photos &middot; 23 followers &middot; Updated 3d ago</p>
+              </div>
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color: var(--text-muted);"><path d="M9 18l6-6-6-6"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- ─── Bottom Tab Nav (Home active) ─── -->
+        <div class="sticky bottom-0 left-0 right-0 px-4" style="background: var(--bg-card); border-top: 1px solid var(--border-color);">
+          <!-- Tab buttons -->
+          <div class="flex items-end justify-around py-2">
+            <!-- Home (Active) -->
+            <button class="interactive flex flex-col items-center gap-0.5 py-1 px-3" style="color: var(--primary);" onclick="switchTab(this)">
+              <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+              </svg>
+              <span class="text-[10px] font-semibold">Home</span>
+            </button>
+
+            <!-- Discover -->
+            <button class="interactive flex flex-col items-center gap-0.5 py-1 px-3 tab-inactive" onclick="switchTab(this)">
+              <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10"/>
+                <polygon points="16.24,7.76 14.12,14.12 7.76,16.24 9.88,9.88"/>
+              </svg>
+              <span class="text-[10px]">Discover</span>
+            </button>
+
+            <!-- Create (Elevated) -->
+            <button class="interactive flex flex-col items-center gap-0.5 px-3" style="margin-top: -16px;">
+              <div class="w-12 h-12 rounded-full flex items-center justify-center shadow-lg" style="background: var(--primary); color: white; box-shadow: 0 4px 20px rgba(139,92,246,0.45);">
+                <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                  <path d="M12 5v14M5 12h14"/>
+                </svg>
+              </div>
+              <span class="text-[10px] mt-0.5" style="color: var(--text-muted);">Create</span>
+            </button>
+
+            <!-- Profile -->
+            <button class="interactive flex flex-col items-center gap-0.5 py-1 px-3 tab-inactive" onclick="switchTab(this)">
+              <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+              <span class="text-[10px]">Profile</span>
+            </button>
+          </div>
+
+          <!-- Home indicator bar -->
+          <div class="flex justify-center pb-2 pt-1">
+            <div class="w-32 h-1 rounded-full" style="background: var(--text-muted); opacity: 0.3;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detailed tab states -->
+      <div class="mt-6 grid grid-cols-4 gap-3 max-w-[390px] mx-auto">
+        <div class="text-center p-3 rounded-xl" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+          <div class="w-10 h-10 rounded-full mx-auto mb-2 flex items-center justify-center" style="background: rgba(139,92,246,0.15);">
+            <svg width="18" height="18" fill="none" stroke="var(--primary)" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+          </div>
+          <p class="text-[10px] font-semibold" style="color: var(--primary);">Home</p>
+          <p class="text-[9px]" style="color: var(--text-muted);">Active</p>
+        </div>
+        <div class="text-center p-3 rounded-xl" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+          <div class="w-10 h-10 rounded-full mx-auto mb-2 flex items-center justify-center" style="background: var(--bg-elevated);">
+            <svg width="18" height="18" fill="none" stroke="var(--text-muted)" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="16.24,7.76 14.12,14.12 7.76,16.24 9.88,9.88"/></svg>
+          </div>
+          <p class="text-[10px]" style="color: var(--text-muted);">Discover</p>
+          <p class="text-[9px]" style="color: var(--text-muted);">Inactive</p>
+        </div>
+        <div class="text-center p-3 rounded-xl" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+          <div class="w-10 h-10 rounded-full mx-auto mb-2 flex items-center justify-center" style="background: var(--primary);">
+            <svg width="18" height="18" fill="none" stroke="white" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          </div>
+          <p class="text-[10px]" style="color: var(--text-muted);">Create</p>
+          <p class="text-[9px]" style="color: var(--text-muted);">Elevated</p>
+        </div>
+        <div class="text-center p-3 rounded-xl" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+          <div class="w-10 h-10 rounded-full mx-auto mb-2 flex items-center justify-center" style="background: var(--bg-elevated);">
+            <svg width="18" height="18" fill="none" stroke="var(--text-muted)" stroke-width="1.5" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <p class="text-[10px]" style="color: var(--text-muted);">Profile</p>
+          <p class="text-[9px]" style="color: var(--text-muted);">Inactive</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="text-center py-8">
+      <p class="text-xs" style="color: var(--text-muted);">Photopods Design Mockups &mdash; Interactive Prototype</p>
+      <p class="text-xs mt-1" style="color: var(--text-muted);">All screens are mobile-first (390px) with responsive breakpoints</p>
+    </footer>
+  </main>
+
+  <script>
+    // ── Theme Toggle ──
+    function toggleTheme() {
+      const html = document.documentElement;
+      const icon = document.getElementById('theme-icon');
+      const label = document.getElementById('theme-label');
+      if (html.classList.contains('dark')) {
+        html.classList.remove('dark');
+        html.classList.add('light');
+        icon.textContent = '☀';
+        label.textContent = 'Dark';
+      } else {
+        html.classList.remove('light');
+        html.classList.add('dark');
+        icon.textContent = '☾';
+        label.textContent = 'Light';
+      }
+    }
+
+    // ── Step Navigation ──
+    function showStep(step) {
+      document.querySelectorAll('.step-content').forEach(el => el.style.display = 'none');
+      document.getElementById('step-' + step).style.display = 'block';
+
+      document.querySelectorAll('.step-tab').forEach(btn => {
+        if (parseInt(btn.dataset.step) === step) {
+          btn.style.background = 'var(--primary)';
+          btn.style.color = 'white';
+          btn.style.borderColor = 'transparent';
+        } else {
+          btn.style.background = 'var(--bg-card)';
+          btn.style.color = 'var(--text-secondary)';
+          btn.style.border = '1px solid var(--border-color)';
+        }
+      });
+    }
+
+    // ── Privacy Card Selection ──
+    function selectPrivacy(card, type) {
+      document.querySelectorAll('.privacy-card').forEach(c => {
+        c.classList.remove('selected');
+        const check = c.querySelector('.privacy-check');
+        check.style.background = 'transparent';
+        check.style.borderColor = 'var(--border-color)';
+        check.querySelector('svg').classList.add('hidden');
+      });
+
+      card.classList.add('selected');
+      const check = card.querySelector('.privacy-check');
+      check.querySelector('svg').classList.remove('hidden');
+      check.style.border = 'none';
+
+      if (type === 'private') {
+        check.style.background = 'var(--private-accent)';
+      } else if (type === 'group') {
+        check.style.background = 'var(--group-accent)';
+      } else {
+        check.style.background = 'var(--public-accent)';
+      }
+    }
+
+    // ── Invite Avatar Toggle ──
+    function toggleInvite(el) {
+      const isInvited = el.classList.toggle('invited');
+      const avatarCircle = el.querySelector('div > div:first-child');
+      const checkBadge = el.querySelector('.absolute');
+
+      if (isInvited) {
+        avatarCircle.style.boxShadow = '0 0 0 3px #22c55e';
+        // Add check badge if not present
+        if (!el.querySelector('[data-check]')) {
+          const badge = document.createElement('div');
+          badge.setAttribute('data-check', 'true');
+          badge.className = 'absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center';
+          badge.style.background = '#22c55e';
+          badge.innerHTML = '<svg width="10" height="10" fill="none" stroke="white" stroke-width="3" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>';
+          el.querySelector('div > div:first-child').parentElement.appendChild(badge);
+        }
+      } else {
+        avatarCircle.style.boxShadow = 'none';
+        const badge = el.querySelector('[data-check]');
+        if (badge) badge.remove();
+      }
+
+      // Update invited count
+      const count = document.querySelectorAll('.invite-avatar.invited').length;
+      const countEl = document.querySelector('[style*="color: #22c55e"]');
+      if (countEl) countEl.textContent = count + ' invited';
+    }
+
+    // ── Gallery Tab Switch ──
+    function switchGalleryTab(btn, view) {
+      document.querySelectorAll('.gallery-tab').forEach(t => {
+        t.style.background = 'var(--bg-elevated)';
+        t.style.color = 'var(--text-secondary)';
+        t.classList.remove('font-semibold');
+        t.classList.add('font-medium');
+      });
+      btn.style.background = 'var(--primary)';
+      btn.style.color = 'white';
+      btn.classList.remove('font-medium');
+      btn.classList.add('font-semibold');
+
+      if (view === 'grid') {
+        document.getElementById('gallery-grid').querySelector('.masonry-grid').style.display = 'block';
+        document.getElementById('gallery-timeline').style.display = 'none';
+      } else {
+        document.getElementById('gallery-grid').querySelector('.masonry-grid').style.display = 'none';
+        document.getElementById('gallery-timeline').style.display = 'block';
+      }
+    }
+
+    // ── Emoji Toggle ──
+    function toggleEmoji(btn) {
+      const isSelected = btn.style.borderColor !== '';
+      const countEl = btn.querySelector('span:last-child');
+      let count = parseInt(countEl.textContent);
+
+      if (btn.style.borderWidth === '2px' || btn.style.border?.includes('solid')) {
+        // Already selected - check if it has the primary border
+        const hasPrimary = btn.style.borderColor === 'var(--primary)' || btn.style.cssText.includes('var(--primary)');
+        if (hasPrimary) {
+          btn.style.background = 'rgba(255,255,255,0.1)';
+          btn.style.border = 'none';
+          countEl.style.color = 'rgba(255,255,255,0.6)';
+          countEl.textContent = Math.max(0, count - 1);
+        } else {
+          btn.style.background = 'rgba(139,92,246,0.3)';
+          btn.style.border = '2px solid var(--primary)';
+          countEl.style.color = 'rgba(255,255,255,0.9)';
+          countEl.textContent = count + 1;
+        }
+      } else {
+        btn.style.background = 'rgba(139,92,246,0.3)';
+        btn.style.border = '2px solid var(--primary)';
+        countEl.style.color = 'rgba(255,255,255,0.9)';
+        countEl.textContent = count + 1;
+      }
+    }
+
+    // ── Follow Toggle ──
+    function toggleFollow(btn) {
+      if (btn.classList.contains('following')) {
+        btn.classList.remove('following');
+        btn.textContent = 'Follow';
+        btn.style.background = 'transparent';
+        btn.style.color = 'var(--primary)';
+      } else {
+        btn.classList.add('following');
+        btn.textContent = 'Following';
+        btn.style.background = 'var(--primary)';
+        btn.style.color = 'white';
+      }
+    }
+
+    // ── Tab Switch (Bottom Nav) ──
+    function switchTab(btn) {
+      const parent = btn.closest('.sticky, [class*="bottom"]');
+      if (!parent) return;
+      parent.querySelectorAll('button').forEach(b => {
+        b.style.color = 'var(--text-muted)';
+        b.classList.add('tab-inactive');
+        b.classList.remove('tab-active');
+        const label = b.querySelector('span');
+        if (label) label.classList.remove('font-semibold');
+      });
+      btn.style.color = 'var(--primary)';
+      btn.classList.remove('tab-inactive');
+      btn.classList.add('tab-active');
+      const label = btn.querySelector('span');
+      if (label) label.classList.add('font-semibold');
+    }
+  </script>
+</body>
+</html>

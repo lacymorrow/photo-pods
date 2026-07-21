@@ -1,10 +1,11 @@
 "use client";
 
-import { ImageIcon, Users } from "lucide-react";
+import { Camera } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { formatDistanceToNowStrict } from "date-fns";
+import { Card } from "@/components/ui/card";
+import { getPrivacyMeta } from "@/lib/pods/privacy";
 
 interface PodCardProps {
 	pod: {
@@ -15,53 +16,79 @@ interface PodCardProps {
 		visibility: string;
 		memberCount: number;
 		role: string;
+		photoCount?: number;
+		updatedAt?: Date | string | null;
 		latestPhoto?: { url: string; thumbnailUrl?: string | null } | null;
 	};
 }
 
 export const PodCard = ({ pod }: PodCardProps) => {
-	const coverUrl = pod.coverPhotoUrl ?? pod.latestPhoto?.thumbnailUrl ?? pod.latestPhoto?.url;
+	const privacy = getPrivacyMeta(pod.visibility);
+	const PrivacyIcon = privacy.icon;
+	const coverUrl =
+		pod.coverPhotoUrl ?? pod.latestPhoto?.thumbnailUrl ?? pod.latestPhoto?.url;
+	const photoCount = pod.photoCount ?? 0;
+
+	const recency = pod.updatedAt
+		? formatDistanceToNowStrict(new Date(pod.updatedAt), { addSuffix: false })
+		: null;
 
 	return (
-		<Link href={`/pods/${pod.id}`}>
-			<Card className="group overflow-hidden transition-all hover:shadow-lg hover:-translate-y-0.5">
-				<div className="relative aspect-[4/3] bg-muted">
+		<Link
+			href={`/pods/${pod.id}`}
+			className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl"
+		>
+			<Card className="group relative overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg pl-1">
+				{/* Privacy accent stripe */}
+				<span
+					aria-hidden
+					className={`absolute left-0 top-0 bottom-0 w-1 ${privacy.accentClass}`}
+				/>
+				<div className="relative aspect-[4/3] bg-muted overflow-hidden rounded-t-md">
 					{coverUrl ? (
 						<Image
 							src={coverUrl}
 							alt={pod.name}
 							fill
-							className="object-cover transition-transform group-hover:scale-105"
+							className="object-cover transition-transform duration-300 group-hover:scale-105"
 							sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
 						/>
 					) : (
-						<div className="flex h-full items-center justify-center">
-							<ImageIcon className="h-12 w-12 text-muted-foreground/40" />
+						<div
+							className={`flex h-full items-center justify-center ${privacy.accentBgTintClass}`}
+						>
+							<PrivacyIcon
+								className={`h-12 w-12 ${privacy.accentTextClass}`}
+							/>
 						</div>
 					)}
-					<div className="absolute top-2 right-2">
-						<Badge variant="secondary" className="text-xs capitalize">
-							{pod.role}
-						</Badge>
+					{/* Privacy icon badge, top-right */}
+					<div
+						className={`absolute top-2 right-2 h-8 w-8 rounded-full flex items-center justify-center ${privacy.badgeClass} shadow-md`}
+						title={privacy.label}
+					>
+						<PrivacyIcon className="h-4 w-4" />
 					</div>
 				</div>
-				<CardContent className="p-4">
-					<h3 className="font-semibold text-lg truncate">{pod.name}</h3>
+				<div className="p-4">
+					<h3 className="font-semibold text-base truncate">{pod.name}</h3>
 					{pod.description && (
-						<p className="text-sm text-muted-foreground line-clamp-2 mt-1">
+						<p className="text-sm text-muted-foreground line-clamp-1 mt-0.5">
 							{pod.description}
 						</p>
 					)}
-					<div className="flex items-center gap-3 mt-3 text-sm text-muted-foreground">
+					<div className="flex items-center gap-3 mt-2.5 text-xs text-muted-foreground">
 						<span className="flex items-center gap-1">
-							<Users className="h-3.5 w-3.5" />
+							<span aria-hidden>👤</span>
 							{pod.memberCount}
 						</span>
-						<Badge variant="outline" className="text-xs capitalize">
-							{pod.visibility}
-						</Badge>
+						<span className="flex items-center gap-1">
+							<Camera className="h-3 w-3" />
+							{photoCount}
+						</span>
+						{recency && <span>{recency} ago</span>}
 					</div>
-				</CardContent>
+				</div>
 			</Card>
 		</Link>
 	);

@@ -425,3 +425,17 @@ export const getPodPhotos = async (
 		nextCursor: hasMore ? String((Number(cursor ?? "0")) + limit) : null,
 	};
 };
+
+// --- Reactions ---
+// Frontend-visible surface. The persistent `media_reactions` table + real
+// mutation land in the backend MVP task (LAC-2857). For now this validates
+// auth so unauthenticated calls fail the same way they will in prod, and
+// no-ops for storage. Wire the DB write into this same signature.
+export const reactToMedia = async (mediaId: string, reaction: string | null) => {
+	await requireAuth();
+	if (!mediaId) throw new Error("mediaId required");
+	if (reaction !== null && typeof reaction !== "string") {
+		throw new Error("Invalid reaction");
+	}
+	return { mediaId, reaction };
+};
