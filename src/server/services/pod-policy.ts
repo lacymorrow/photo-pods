@@ -100,7 +100,9 @@ export const canView = (ctx: PolicyContext | null): boolean => {
 		case "group":
 			return isMember(ctx);
 		case "private":
-			return isMember(ctx);
+			// Owner-only, even if the pod was downgraded from group→private with
+			// prior members still in pod_members. Fixes LAC-2897 H5.
+			return isOwner(ctx);
 	}
 };
 
@@ -115,6 +117,9 @@ export const canView = (ctx: PolicyContext | null): boolean => {
 export const canUpload = (ctx: PolicyContext | null): boolean => {
 	if (!ctx) return false;
 	if (ctx.pod.hiddenAt) return false;
+	// Private pods are owner-only across the matrix. Membership can persist
+	// after a group→private downgrade; policy trumps stale rows.
+	if (ctx.pod.visibility === "private") return isOwner(ctx);
 	return isMember(ctx);
 };
 
@@ -135,7 +140,7 @@ export const canReact = (ctx: PolicyContext | null): boolean => {
 		case "group":
 			return isMember(ctx);
 		case "private":
-			return isMember(ctx);
+			return isOwner(ctx);
 	}
 };
 

@@ -298,6 +298,10 @@ export const mediaReports = createTable(
 			.notNull(),
 	},
 	(table) => [
+		// One report per (media, reporter). Backs the reportMedia dedup so a
+		// single account cannot auto-hide media via three self-reports.
+		// (LAC-2897 H4.)
+		uniqueIndex("pod_media_report_unique_idx").on(table.mediaId, table.reporterId),
 		index("pod_media_report_media_idx").on(table.mediaId),
 		index("pod_media_report_status_idx").on(table.status),
 	],

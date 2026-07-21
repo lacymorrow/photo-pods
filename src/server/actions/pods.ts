@@ -98,6 +98,8 @@ export const createPod = async (data: {
 	return pod;
 };
 
+const VALID_VISIBILITIES: readonly PodVisibility[] = ["private", "group", "public"];
+
 export const updatePod = async (
 	podId: string,
 	data: {
@@ -108,14 +110,68 @@ export const updatePod = async (
 	},
 ) => {
 	const viewer = await viewerOf();
-	await policy.guardPod(podId, viewer, policy.isOwner, "edit");
+	const ctx = await policy.guardPod(podId, viewer, policy.isOwner, "edit");
 	const database = requireDb();
 
-	const [updated] = await database
-		.update(pods)
-		.set({ ...data, updatedAt: new Date() })
-		.where(eq(pods.id, podId))
-		.returning();
+	// Whitelist columns explicitly — the TypeScript param shape is not a runtime
+	// allowlist for a server action, and `.set({ ...data })` would pass anything
+	// Drizzle recognises as a column (createdById, hiddenAt, counters, EXIF flag).
+	// Fixes LAC-2897 H1.
+	const patch: Record<string, unknown> = { updatedAt: new Date() };
+	if (data.name !== undefined) {
+		const name = String(data.name).trim();
+		if (!name) throw new Error("Pod name required");
+		if (name.length > 255) throw new Error("Pod name too long");
+		patch.name = name;
+	}
+	if (data.description !== undefined) {
+		patch.description = data.description === null ? null : String(data.description);
+	}
+	if (data.coverPhotoUrl !== undefined) {
+		patch.coverPhotoUrl = data.coverPhotoUrl === null ? null : String(data.coverPhotoUrl);
+	}
+	if (data.visibility !== undefined) {
+		if (!VALID_VISIBILITIES.includes(data.visibility)) {
+			throw new Error("Invalid visibility");
+		}
+		patch.visibility = data.visibility;
+	}
+
+	const downgradingToPrivate =
+		data.visibility === "private" && ctx.pod.visibility !== "private";
+
+	const updated = await database.transaction(async (tx) => {
+		const [row] = await tx
+			.update(pods)
+			.set(patch)
+			.where(eq(pods.id, podId))
+			.returning();
+
+		// Visibility downgrade to private: private is owner-only, so drop any
+		// non-owner members that carried over. Backstops the policy fix (H5) so
+		// stale rows do not linger and reappear if visibility is bumped back.
+		if (downgradingToPrivate && row) {
+			const removed = await tx
+				.delete(podMembers)
+				.where(
+					and(
+						eq(podMembers.podId, podId),
+						sql`${podMembers.role} <> 'owner'`,
+					),
+				)
+				.returning({ id: podMembers.id });
+			if (removed.length > 0) {
+				await tx
+					.update(pods)
+					.set({
+						memberCount: sql`GREATEST(${pods.memberCount} - ${removed.length}, 1)`,
+					})
+					.where(eq(pods.id, podId));
+			}
+		}
+
+		return row;
+	});
 
 	revalidatePath(`/pods/${podId}`);
 	revalidatePath("/pods");
@@ -722,8 +778,16 @@ export const finalizeUpload = async (input: {
  * Kept for the pre-R2 development path so the existing UI keeps working. Not
  * suitable for production per LAC-2855 §1 (Vercel serverless body caps at
  * ~4.5 MB, blocking spec limits). Once R2 is provisioned, this deletes.
+ *
+ * Gated: unavailable once object storage is configured (production) and
+ * enforces the same photo size cap as the presigned path. (LAC-2897 M4.)
  */
 export const uploadPhoto = async (podId: string, formData: FormData) => {
+	if (isStorageConfigured()) {
+		throw new Error(
+			"Legacy upload path is disabled — use the presigned upload flow.",
+		);
+	}
 	const viewer = await viewerOf();
 	const ctx = await policy.guardPod(podId, viewer, policy.canUpload, "upload to");
 	if (!ctx.viewer.userId) throw new Error("Sign in required");
@@ -734,6 +798,11 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
 	const contentType = file.type.toLowerCase();
 	if (!PHOTO_MIMES.has(contentType)) {
 		throw new Error("Invalid file type. Allowed: JPEG, PNG, WebP, HEIC");
+	}
+	if (typeof file.size !== "number" || file.size <= 0 || file.size > MAX_PHOTO_BYTES) {
+		throw new Error(
+			`File size ${file.size} bytes exceeds max ${MAX_PHOTO_BYTES} bytes for photo`,
+		);
 	}
 
 	// Sanitize the client-supplied filename before using it in the blob key.
@@ -902,6 +971,11 @@ export const reactToMedia = async (mediaId: string, reaction: string | null) => 
 	if (media.status !== "ready") {
 		throw new Error("Cannot react to this media");
 	}
+	// Media auto-hidden by reports is unreachable to everyone except the
+	// uploader and platform admins. (LAC-2897 M3.)
+	if (media.hiddenAt && media.uploadedById !== viewer.userId && !viewer.isAdmin) {
+		throw new Error("Media not found");
+	}
 
 	const ctx = await policy.loadPolicyContext(media.podId, viewer);
 	if (!ctx || !policy.canReact(ctx)) {
@@ -920,6 +994,11 @@ export const getReactorsForMedia = async (
 	const viewer = await viewerOf();
 	const media = await reactions.resolveMediaPod(mediaId);
 	if (!media) throw new Error("Media not found");
+	// Hidden media hides its reactor list too. Uploader and admins keep read
+	// access so moderation review still works. (LAC-2897 M3.)
+	if (media.hiddenAt && media.uploadedById !== viewer.userId && !viewer.isAdmin) {
+		throw new Error("Media not found");
+	}
 
 	const ctx = await policy.loadPolicyContext(media.podId, viewer);
 	if (!ctx || !policy.canView(ctx)) throw new Error("Access denied");
@@ -934,6 +1013,23 @@ export const getReactorsForMedia = async (
 
 // --- Reports ---
 
+// Sliding-window limiter for reports (per user). Best-effort per-process; a
+// durable limiter lives with the other rate-limit follow-ups.
+const REPORT_WINDOW_MS = 60 * 60 * 1000;
+const REPORT_MAX_PER_WINDOW = 20;
+const reportAttempts = new Map<string, number[]>();
+
+const checkReportRateLimit = (userId: string): void => {
+	const now = Date.now();
+	const cutoff = now - REPORT_WINDOW_MS;
+	const hits = (reportAttempts.get(userId) ?? []).filter((t) => t > cutoff);
+	if (hits.length >= REPORT_MAX_PER_WINDOW) {
+		throw new Error("Too many reports. Please try again later.");
+	}
+	hits.push(now);
+	reportAttempts.set(userId, hits);
+};
+
 export const reportMedia = async (
 	mediaId: string,
 	reason:
@@ -946,18 +1042,32 @@ export const reportMedia = async (
 	details?: string,
 ) => {
 	const user = await requireAuth();
+	checkReportRateLimit(user.id);
 	const database = requireDb();
 	const media = await reactions.resolveMediaPod(mediaId);
 	if (!media) throw new Error("Media not found");
 
 	const { mediaReports } = await import("@/server/db/pods-schema");
-	await database.transaction(async (tx) => {
-		await tx.insert(mediaReports).values({
-			mediaId,
-			reporterId: user.id,
-			reason,
-			details: details ?? null,
-		});
+	const outcome = await database.transaction(async (tx) => {
+		// Dedup on (mediaId, reporterId). A single user cannot inflate
+		// report_count past 1 for the same media — fixes LAC-2897 H4.
+		const inserted = await tx
+			.insert(mediaReports)
+			.values({
+				mediaId,
+				reporterId: user.id,
+				reason,
+				details: details ?? null,
+			})
+			.onConflictDoNothing({
+				target: [mediaReports.mediaId, mediaReports.reporterId],
+			})
+			.returning({ id: mediaReports.id });
+
+		if (inserted.length === 0) {
+			return { alreadyReported: true } as const;
+		}
+
 		await tx
 			.update(podMedia)
 			.set({ reportCount: sql`${podMedia.reportCount} + 1` })
@@ -972,6 +1082,7 @@ export const reportMedia = async (
 				AND hidden_at IS NULL
 				AND report_count >= 3
 		`);
+		return { alreadyReported: false } as const;
 	});
-	return { ok: true };
+	return { ok: true, alreadyReported: outcome.alreadyReported };
 };

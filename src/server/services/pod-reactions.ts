@@ -123,11 +123,23 @@ export const getViewerReactions = async (
  */
 export const resolveMediaPod = async (
 	mediaId: string,
-): Promise<{ id: string; podId: string; status: string } | null> => {
+): Promise<{
+	id: string;
+	podId: string;
+	status: string;
+	hiddenAt: Date | null;
+	uploadedById: string;
+} | null> => {
 	const database = requireDb();
 	const row = await database.query.podMedia.findFirst({
 		where: eq(podMedia.id, mediaId),
-		columns: { id: true, podId: true, status: true },
+		columns: {
+			id: true,
+			podId: true,
+			status: true,
+			hiddenAt: true,
+			uploadedById: true,
+		},
 	});
 	if (!row) return null;
 	return row;
