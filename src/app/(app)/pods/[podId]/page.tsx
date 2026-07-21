@@ -5,10 +5,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { DownloadAllButton } from "@/components/pods/download-all-button";
+import { InviteButton } from "@/components/pods/invite-button";
 import { InviteLink } from "@/components/pods/invite-link";
 import { MemberList } from "@/components/pods/member-list";
 import { PhotoGrid } from "@/components/pods/photo-grid";
 import { PhotoUpload } from "@/components/pods/photo-upload";
+import { getPrivacyMeta } from "@/lib/pods/privacy";
 import { getPod, getPodPhotos } from "@/server/actions/pods";
 import { auth } from "@/server/auth";
 
@@ -33,6 +35,18 @@ export default async function PodDetailPage({ params }: Props) {
 	const isOwner = currentMember?.role === "owner";
 	const canUpload = isOwner || currentMember?.role === "contributor";
 
+	const privacy = getPrivacyMeta(pod.visibility);
+	const PrivacyIcon = privacy.icon;
+	const canInvite = isOwner || currentMember?.role === "contributor";
+	const contacts = pod.members
+		.filter((m) => m.userId !== session.user.id)
+		.map((m) => ({
+			id: m.userId,
+			name: m.user?.name ?? "Member",
+			username: m.user?.name?.split(" ")[0]?.toLowerCase() ?? null,
+			image: m.user?.image ?? null,
+		}));
+
 	return (
 		<div className="container max-w-6xl px-4 sm:px-6 py-6 sm:py-8">
 			{/* Header */}
@@ -40,8 +54,9 @@ export default async function PodDetailPage({ params }: Props) {
 				<div className="min-w-0">
 					<div className="flex items-center gap-2 sm:gap-3 flex-wrap">
 						<h1 className="text-2xl sm:text-3xl font-bold truncate">{pod.name}</h1>
-						<Badge variant="outline" className="capitalize shrink-0">
-							{pod.visibility}
+						<Badge className={`shrink-0 gap-1 ${privacy.badgeClass}`}>
+							<PrivacyIcon className="h-3 w-3" />
+							{privacy.label}
 						</Badge>
 					</div>
 					{pod.description && (
@@ -55,7 +70,13 @@ export default async function PodDetailPage({ params }: Props) {
 						</span>
 					</div>
 				</div>
-				<div className="flex items-center gap-2">
+				<div className="flex items-center gap-2 flex-wrap">
+					{canInvite && (
+						<InviteButton
+							pod={{ id: pod.id, name: pod.name, visibility: pod.visibility }}
+							contacts={contacts}
+						/>
+					)}
 					<DownloadAllButton
 						podName={pod.name}
 						photos={photos.map((p) => ({ url: p.url, caption: p.caption }))}

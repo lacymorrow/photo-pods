@@ -10,7 +10,9 @@ import {
 	DialogContent,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { deletePhoto } from "@/server/actions/pods";
+import { REACTIONS, type ReactionCounts } from "@/lib/pods/reactions";
+import { deletePhoto, reactToMedia } from "@/server/actions/pods";
+import { ReactionsTray } from "./reactions-tray";
 
 interface ExifData {
 	make?: string;
@@ -31,6 +33,8 @@ interface Photo {
 	exifData?: ExifData | null;
 	uploadedBy?: { name?: string | null; image?: string | null } | null;
 	createdAt: Date;
+	reactionCounts?: ReactionCounts;
+	myReaction?: string | null;
 }
 
 interface PhotoGridProps {
@@ -94,23 +98,45 @@ export const PhotoGrid = ({ photos, canDelete, currentUserId }: PhotoGridProps) 
 	return (
 		<>
 			<div className="columns-2 sm:columns-3 lg:columns-4 gap-3 space-y-3">
-				{photos.map((photo, index) => (
-					<button
-						key={photo.id}
-						type="button"
-						className="block w-full overflow-hidden rounded-lg cursor-pointer break-inside-avoid"
-						onClick={() => setSelectedIndex(index)}
-					>
-						<Image
-							src={photo.thumbnailUrl ?? photo.url}
-							alt={photo.caption ?? "Photo"}
-							width={400}
-							height={300}
-							className="w-full h-auto object-cover transition-transform hover:scale-105"
-							sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-						/>
-					</button>
-				))}
+				{photos.map((photo, index) => {
+					const topReactions = photo.reactionCounts
+						? Object.entries(photo.reactionCounts)
+								.filter(([, n]) => n > 0)
+								.sort(([, a], [, b]) => b - a)
+								.slice(0, 2)
+						: [];
+					const totalReactions = topReactions.reduce((a, [, n]) => a + n, 0);
+					return (
+						<button
+							key={photo.id}
+							type="button"
+							className="relative block w-full overflow-hidden rounded-lg cursor-pointer break-inside-avoid"
+							onClick={() => setSelectedIndex(index)}
+						>
+							<Image
+								src={photo.thumbnailUrl ?? photo.url}
+								alt={photo.caption ?? "Photo"}
+								width={400}
+								height={300}
+								className="w-full h-auto object-cover transition-transform hover:scale-105"
+								sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+							/>
+							{totalReactions > 0 && (
+								<span className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-0.5 rounded-full bg-black/45 backdrop-blur-sm px-2 py-0.5 text-[11px] text-white">
+									{topReactions.map(([slug]) => {
+										const r = REACTIONS.find((x) => x.slug === slug);
+										return (
+											<span key={slug} aria-hidden>
+												{r?.emoji ?? "•"}
+											</span>
+										);
+									})}
+									<span className="ml-0.5 tabular-nums">{totalReactions}</span>
+								</span>
+							)}
+						</button>
+					);
+				})}
 			</div>
 
 			{/* Lightbox */}
@@ -145,7 +171,13 @@ export const PhotoGrid = ({ photos, canDelete, currentUserId }: PhotoGridProps) 
 								className="w-full h-auto max-h-[80vh] object-contain"
 								priority
 							/>
-							<div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
+							<div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/85 to-transparent p-4 space-y-3">
+								<ReactionsTray
+									mediaId={selectedPhoto.id}
+									counts={selectedPhoto.reactionCounts ?? {}}
+									mine={selectedPhoto.myReaction ?? null}
+									onReact={(id, next) => reactToMedia(id, next)}
+								/>
 								<div className="flex items-end justify-between gap-4">
 									<div className="min-w-0 flex-1">
 										{selectedPhoto.caption && (

@@ -1,7 +1,7 @@
 "use server";
 
 import crypto from "node:crypto";
-import { and, desc, eq, sql, count } from "drizzle-orm";
+import { and, desc, eq, inArray, sql, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/server/auth";
 import { db } from "@/server/db";
@@ -169,11 +169,22 @@ export const getUserPods = async () => {
 		orderBy: [desc(podMembers.joinedAt)],
 	});
 
+	const podIds = memberships.map((m) => m.pod.id);
+	const photoCounts = new Map<string, number>();
+	if (podIds.length > 0) {
+		const rows = await database
+			.select({ podId: podPhotos.podId, count: count() })
+			.from(podPhotos)
+			.where(inArray(podPhotos.podId, podIds))
+			.groupBy(podPhotos.podId);
+		for (const row of rows) photoCounts.set(row.podId, Number(row.count));
+	}
+
 	return memberships.map((m) => ({
 		...m.pod,
 		role: m.role,
 		memberCount: m.pod.members.length,
-		photoCount: 0, // Will be filled by count query if needed
+		photoCount: photoCounts.get(m.pod.id) ?? 0,
 		latestPhoto: m.pod.photos[0] ?? null,
 	}));
 };
@@ -424,4 +435,36 @@ export const getPodPhotos = async (
 		photos,
 		nextCursor: hasMore ? String((Number(cursor ?? "0")) + limit) : null,
 	};
+};
+
+// --- Reactions ---
+// Frontend-visible surface. The persistent `media_reactions` table + real
+// mutation land in the backend MVP task (LAC-2857). For now this validates
+// auth AND pod membership so the ACL gate exists even without persistence.
+export const reactToMedia = async (mediaId: string, reaction: string | null) => {
+	const user = await requireAuth();
+	if (!mediaId) throw new Error("mediaId required");
+	if (reaction !== null && typeof reaction !== "string") {
+		throw new Error("Invalid reaction");
+	}
+
+	// TODO(LAC-2857): must gate by pod membership + read access. Fail-closed
+	// membership check below so an authenticated caller cannot react to a
+	// media id they can't see. Backend swap-in should preserve this contract.
+	const database = requireDb();
+	const photo = await database.query.podPhotos.findFirst({
+		where: eq(podPhotos.id, mediaId),
+		columns: { id: true, podId: true },
+	});
+	if (!photo) throw new Error("Media not found");
+
+	const membership = await database.query.podMembers.findFirst({
+		where: and(
+			eq(podMembers.podId, photo.podId),
+			eq(podMembers.userId, user.id),
+		),
+	});
+	if (!membership) throw new Error("Access denied");
+
+	return { mediaId, reaction };
 };
