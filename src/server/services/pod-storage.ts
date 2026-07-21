@@ -302,3 +302,58 @@ export const fetchObjectRange = async (
 		return null;
 	}
 };
+
+/**
+ * Fetch a full object as a Buffer. Used by the video finalize path
+ * (LAC-2933) to pull the uploaded MP4/MOV for atom-level GPS scrubbing.
+ * Returns null on any error.
+ */
+export const fetchObject = async (
+	config: StorageConfig,
+	key: string,
+): Promise<Buffer | null> => {
+	if (config.provider === "vercel-blob" || !config.bucket) return null;
+	try {
+		const url = presign({ config, method: "GET", key, expiresInSeconds: 60 });
+		const res = await fetch(url, { method: "GET" });
+		if (!res.ok) return null;
+		return Buffer.from(await res.arrayBuffer());
+	} catch {
+		return null;
+	}
+};
+
+/**
+ * PUT an object body via a presigned URL. Used by the video finalize path
+ * (LAC-2933) to write back scrubbed MP4/MOV bytes. Returns false on any
+ * error so the caller can fail closed.
+ */
+export const putObject = async (
+	config: StorageConfig,
+	key: string,
+	body: Buffer,
+	contentType: string,
+): Promise<boolean> => {
+	if (config.provider === "vercel-blob" || !config.bucket) return false;
+	try {
+		const url = presign({
+			config,
+			method: "PUT",
+			key,
+			contentType,
+			contentLength: body.byteLength,
+			expiresInSeconds: 60,
+		});
+		const res = await fetch(url, {
+			method: "PUT",
+			headers: {
+				"Content-Type": contentType,
+				"Content-Length": String(body.byteLength),
+			},
+			body: new Uint8Array(body),
+		});
+		return res.ok;
+	} catch {
+		return false;
+	}
+};

@@ -29,12 +29,18 @@ import {
 } from "@/server/services/pod-storage-cleanup";
 import {
 	buildStorageKey,
+	fetchObject,
 	fetchObjectRange,
 	isStorageConfigured,
 	loadStorageConfig,
 	presign,
 	publicUrlForKey,
+	putObject,
 } from "@/server/services/pod-storage";
+import {
+	hasVideoGpsMetadata,
+	scrubMp4Metadata,
+} from "@/server/services/pod-video-processing";
 
 // --- Helpers ---
 
@@ -775,6 +781,7 @@ export const finalizeUpload = async (input: {
 	// the strip itself moves into the R2 finalize worker (LAC-2855 §3); for
 	// now the client strips and the server only verifies, so this path only
 	// stamps `exifVerifiedAt`, not `exifStrippedAt` (LAC-2932).
+	let exifStrippedAt: Date | null = null;
 	let exifVerifiedAt: Date | null = null;
 	if (media.type === "photo" && media.storageKey) {
 		const pod = await database.query.pods.findFirst({
@@ -812,6 +819,75 @@ export const finalizeUpload = async (input: {
 		}
 	}
 
+	// LAC-2933: MP4/MOV atom-level GPS scrub. Videos from iOS/Android capture
+	// pipelines carry GPS inside `moov/udta` (©xyz ISO 6709) and `moov/meta`
+	// (Apple `com.apple.quicktime.location.ISO6709`). We rewrite those boxes
+	// to `free` and zero their payload, then verify no GPS marker remains,
+	// then upload the scrubbed bytes back to the same key. Pods that opted
+	// in to `retainLocationExif` skip the strip. Fails closed (LAC-2928):
+	// parse errors, fetch failures, verification hits, and upload failures
+	// all reject the finalize and remove the stored object. Long-term this
+	// path also moves into the R2 finalize worker (LAC-2855 §3).
+	if (media.type === "video" && media.storageKey && isStorageConfigured()) {
+		const pod = await database.query.pods.findFirst({
+			where: eq(pods.id, media.podId),
+			columns: { retainLocationExif: true },
+		});
+		const retain = Boolean(pod?.retainLocationExif);
+		if (!retain) {
+			const original = await fetchObject(config, media.storageKey);
+			if (!original) {
+				throw new Error(
+					"Upload rejected: could not fetch uploaded video for GPS strip.",
+				);
+			}
+			let scrubbed: Buffer;
+			try {
+				scrubbed = scrubMp4Metadata(original);
+			} catch (err) {
+				console.warn(
+					"[finalizeUpload] MP4 GPS scrub failed, rejecting upload",
+					err,
+				);
+				await deleteObjectsWithRetry([
+					{ kind: "storage-key", value: media.storageKey },
+				]);
+				await database
+					.update(podMedia)
+					.set({ status: "removed", hiddenAt: new Date() })
+					.where(eq(podMedia.id, media.id));
+				throw new Error(
+					"Upload rejected: video could not be parsed to strip GPS metadata. Please retry with a different file.",
+				);
+			}
+			if (hasVideoGpsMetadata(scrubbed)) {
+				await deleteObjectsWithRetry([
+					{ kind: "storage-key", value: media.storageKey },
+				]);
+				await database
+					.update(podMedia)
+					.set({ status: "removed", hiddenAt: new Date() })
+					.where(eq(podMedia.id, media.id));
+				throw new Error(
+					"Upload rejected: video still contains GPS metadata after strip. Please retry.",
+				);
+			}
+			const uploaded = await putObject(
+				config,
+				media.storageKey,
+				scrubbed,
+				media.mimeType ?? "video/mp4",
+			);
+			if (!uploaded) {
+				throw new Error(
+					"Upload rejected: failed to store scrubbed video bytes.",
+				);
+			}
+			exifStrippedAt = new Date();
+			exifVerifiedAt = new Date();
+		}
+	}
+
 	const publicUrl = media.storageKey
 		? publicUrlForKey(config, media.storageKey)
 		: null;
@@ -826,6 +902,7 @@ export const finalizeUpload = async (input: {
 			caption: input.caption ?? media.caption,
 			url: publicUrl ?? media.url,
 			readyAt: media.type === "video" ? media.readyAt : new Date(),
+			exifStripped: exifStrippedAt ?? media.exifStripped,
 			exifVerified: exifVerifiedAt ?? media.exifVerified,
 		})
 		.where(eq(podMedia.id, input.mediaId))
