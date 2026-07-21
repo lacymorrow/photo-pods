@@ -97,10 +97,11 @@ export async function deleteAccount() {
       return { success: false, error: "Database not available" };
     }
 
-    // GDPR (LAC-2917 H2): before we cascade-delete the user row, enumerate
-    // every R2 object owned by them — both photos they uploaded and photos
-    // in pods they own — so the storage deletes can run after the DB is
-    // gone. Failed keys queue for worker retry.
+    // GDPR (LAC-2917 H2 / LAC-2930): before we cascade-delete the user row,
+    // enumerate every storage destination owned by them — R2 keys AND legacy
+    // Vercel Blob URLs — for both photos they uploaded and photos in pods
+    // they own, so cleanup can run after the DB is gone. Failed targets
+    // queue for worker retry.
     const userId = session.user.id;
     const ownedPodIds = (
       await db.select({ id: pods.id }).from(pods).where(eq(pods.createdById, userId))
@@ -109,6 +110,7 @@ export async function deleteAccount() {
       .select({
         storageKey: podMedia.storageKey,
         variants: podMedia.variants,
+        url: podMedia.url,
       })
       .from(podMedia)
       .where(
@@ -122,10 +124,10 @@ export async function deleteAccount() {
             )
           : eq(podMedia.uploadedById, userId),
       );
-    const keys = mediaRows.flatMap((m) => collectMediaKeys(m));
+    const targets = mediaRows.flatMap((m) => collectMediaKeys(m));
 
     await db.delete(users).where(eq(users.id, userId));
-    if (keys.length > 0) await deleteObjectsWithRetry(keys);
+    if (targets.length > 0) await deleteObjectsWithRetry(targets);
 
     return { success: true, message: "Account deleted successfully" };
   } catch (error) {
