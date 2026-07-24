@@ -17,6 +17,7 @@
  */
 
 import { and, eq } from "drizzle-orm";
+import { MAX_MEDIA_PER_POD } from "@/lib/pods/limits";
 import { db } from "@/server/db";
 import {
 	type Pod,
@@ -32,7 +33,7 @@ export interface Viewer {
 }
 
 export interface PolicyContext {
-	pod: Pick<Pod, "id" | "visibility" | "createdById" | "hiddenAt">;
+	pod: Pick<Pod, "id" | "visibility" | "createdById" | "hiddenAt" | "mediaCount">;
 	viewer: Viewer;
 	membership: Pick<PodMember, "role"> | null;
 }
@@ -58,6 +59,7 @@ export const loadPolicyContext = async (
 			visibility: true,
 			createdById: true,
 			hiddenAt: true,
+			mediaCount: true,
 		},
 	});
 	if (!pod) return null;
@@ -106,15 +108,19 @@ export const canView = (ctx: PolicyContext | null): boolean => {
 	}
 };
 
+/** Pods hold at most MAX_MEDIA_PER_POD items (LAC-2854, enforced LAC-2913). */
+export const hasMediaCapacity = (ctx: PolicyContext | null): boolean =>
+	Boolean(ctx && ctx.pod.mediaCount < MAX_MEDIA_PER_POD);
+
 /**
- * Who can add media?
+ * Membership/visibility rules for adding media, ignoring the pod cap.
  *
  * Uniform across visibility: membership is required. Public pods are
  * world-viewable, but adding media requires an invite — board clarification on
  * LAC-2855 (2026-07-21) supersedes the spec's "any authenticated user uploads
  * to public pods" line.
  */
-export const canUpload = (ctx: PolicyContext | null): boolean => {
+const mayUploadAsMember = (ctx: PolicyContext | null): boolean => {
 	if (!ctx) return false;
 	if (ctx.pod.hiddenAt) return false;
 	// Private pods are owner-only across the matrix. Membership can persist
@@ -122,6 +128,13 @@ export const canUpload = (ctx: PolicyContext | null): boolean => {
 	if (ctx.pod.visibility === "private") return isOwner(ctx);
 	return isMember(ctx);
 };
+
+/**
+ * Who can add media? Membership rules plus the pod-level item cap. Use
+ * `guardUpload` in actions to get a distinct 409 when the pod is full.
+ */
+export const canUpload = (ctx: PolicyContext | null): boolean =>
+	mayUploadAsMember(ctx) && hasMediaCapacity(ctx);
 
 /**
  * Who can react?
@@ -171,7 +184,7 @@ export const isDiscoverable = (visibility: PodVisibility): boolean =>
 	visibility === "public";
 
 export interface PolicyError extends Error {
-	code: "not_found" | "forbidden" | "unauthenticated";
+	code: "not_found" | "forbidden" | "unauthenticated" | "pod_full";
 	status: number;
 }
 
@@ -203,6 +216,25 @@ export const guardPod = async (
 			throw err("unauthenticated", `Sign in required to ${action}`, 401);
 		}
 		throw err("forbidden", `Not allowed to ${action} this pod`, 403);
+	}
+	return ctx;
+};
+
+/**
+ * Upload guard with a distinct error for the pod cap. Membership is checked
+ * first so outsiders get the usual 403 and learn nothing about pod fullness.
+ */
+export const guardUpload = async (
+	podId: string,
+	viewer: Viewer,
+): Promise<PolicyContext> => {
+	const ctx = await guardPod(podId, viewer, mayUploadAsMember, "upload to");
+	if (!hasMediaCapacity(ctx)) {
+		throw err(
+			"pod_full",
+			`This pod is full (${MAX_MEDIA_PER_POD.toLocaleString("en-US")} item limit)`,
+			409,
+		);
 	}
 	return ctx;
 };
