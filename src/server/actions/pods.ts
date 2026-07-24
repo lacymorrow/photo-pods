@@ -2,7 +2,7 @@
 
 import crypto from "node:crypto";
 
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { auth } from "@/server/auth";
@@ -260,6 +260,11 @@ export const listPublicPods = async (options?: {
 }) => {
 	const database = requireDb();
 	const limit = Math.min(Math.max(options?.limit ?? 24, 1), 100);
+	// Callers (including direct RPC invocations) may pass garbage cursors;
+	// treat anything unparseable as "no cursor" rather than binding Invalid Date.
+	const cursorDate = options?.cursor ? new Date(options.cursor) : null;
+	const cursor =
+		cursorDate && !Number.isNaN(cursorDate.getTime()) ? cursorDate : null;
 	const rows = await database
 		.select({
 			id: pods.id,
@@ -275,9 +280,7 @@ export const listPublicPods = async (options?: {
 			and(
 				eq(pods.visibility, "public"),
 				sql`${pods.hiddenAt} IS NULL`,
-				options?.cursor
-					? sql`${pods.createdAt} < ${new Date(options.cursor)}`
-					: sql`true`,
+				cursor ? sql`${pods.createdAt} < ${cursor}` : sql`true`,
 			),
 		)
 		.orderBy(desc(pods.createdAt))

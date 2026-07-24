@@ -48,7 +48,7 @@ export default async function PodsPage() {
 							<Link href="/auth/sign-in">Sign In</Link>
 						</Button>
 						<Button size="lg" variant="outline" asChild>
-							<Link href="/">Learn More</Link>
+							<Link href="/pods/discover">Discover Public Pods</Link>
 						</Button>
 					</div>
 				</div>

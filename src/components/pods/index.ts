@@ -1,3 +1,4 @@
+export { DiscoverPodCard } from "./discover-pod-card";
 export { PodCard } from "./pod-card";
 export { PodGrid } from "./pod-grid";
 export { PhotoGrid } from "./photo-grid";
