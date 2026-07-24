@@ -73,7 +73,7 @@
     "tests",
     "public",
     "packages",
-    "cli/dist",
+    "cli",
     "debug/**/*.ts",
     "src/app/(app)/(demo)/examples/**/*",
     "src/workers/**/*.ts"
