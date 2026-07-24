@@ -86,6 +86,7 @@ export const routes = {
     integrations: "/admin/integrations",
     feedback: "/admin/feedback",
     payments: "/admin/payments",
+    moderationPods: "/admin/moderation/pods",
   },
 
   settings: {
