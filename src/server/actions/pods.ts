@@ -639,7 +639,7 @@ export const requestPresignedUpload = async (
 	req: PresignedUploadRequest,
 ): Promise<PresignedUploadResponse> => {
 	const viewer = await viewerOf();
-	const ctx = await policy.guardPod(req.podId, viewer, policy.canUpload, "upload to");
+	const ctx = await policy.guardUpload(req.podId, viewer);
 	if (!ctx.viewer.userId) throw new Error("Sign in required");
 
 	const contentType = req.contentType.toLowerCase();
@@ -792,7 +792,7 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
 		);
 	}
 	const viewer = await viewerOf();
-	const ctx = await policy.guardPod(podId, viewer, policy.canUpload, "upload to");
+	const ctx = await policy.guardUpload(podId, viewer);
 	if (!ctx.viewer.userId) throw new Error("Sign in required");
 	const database = requireDb();
 

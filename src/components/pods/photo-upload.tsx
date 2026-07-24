@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useCallback, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { acceptUploadBatch, MAX_UPLOAD_BATCH } from "@/lib/pods/limits";
 import { uploadPhoto } from "@/server/actions/pods";
 
 interface PhotoUploadProps {
@@ -14,19 +15,30 @@ interface PhotoUploadProps {
 export const PhotoUpload = ({ podId }: PhotoUploadProps) => {
 	const [isDragging, setIsDragging] = useState(false);
 	const [previews, setPreviews] = useState<{ file: File; preview: string }[]>([]);
+	const [batchNotice, setBatchNotice] = useState<string | null>(null);
 	const [isPending, startTransition] = useTransition();
 	const inputRef = useRef<HTMLInputElement>(null);
 	const cameraRef = useRef<HTMLInputElement>(null);
 
-	const handleFiles = useCallback((files: FileList | File[]) => {
-		const newPreviews = Array.from(files)
-			.filter((f) => f.type.startsWith("image/"))
-			.map((file) => ({
+	const handleFiles = useCallback(
+		(files: FileList | File[]) => {
+			const images = Array.from(files).filter((f) => f.type.startsWith("image/"));
+			// Spec caps a batch at 50 items (LAC-2854); overflow is dropped, not queued.
+			const { accepted, rejectedCount } = acceptUploadBatch(previews.length, images);
+			setBatchNotice(
+				rejectedCount > 0
+					? `You can upload up to ${MAX_UPLOAD_BATCH} photos at a time — ${rejectedCount} file${rejectedCount === 1 ? " was" : "s were"} not added.`
+					: null,
+			);
+			if (accepted.length === 0) return;
+			const newPreviews = accepted.map((file) => ({
 				file,
 				preview: URL.createObjectURL(file),
 			}));
-		setPreviews((prev) => [...prev, ...newPreviews]);
-	}, []);
+			setPreviews((prev) => [...prev, ...newPreviews]);
+		},
+		[previews.length],
+	);
 
 	const removePreview = (index: number) => {
 		setPreviews((prev) => {
@@ -47,6 +59,7 @@ export const PhotoUpload = ({ podId }: PhotoUploadProps) => {
 			}
 			for (const p of previews) URL.revokeObjectURL(p.preview);
 			setPreviews([]);
+			setBatchNotice(null);
 		});
 	};
 
@@ -54,6 +67,9 @@ export const PhotoUpload = ({ podId }: PhotoUploadProps) => {
 		<div className="space-y-4">
 			{/* Drop zone */}
 			<div
+				role="button"
+				tabIndex={0}
+				aria-label="Add photos"
 				className={`relative border-2 border-dashed rounded-xl p-6 sm:p-8 text-center transition-colors cursor-pointer ${
 					isDragging
 						? "border-primary bg-primary/5"
@@ -70,17 +86,26 @@ export const PhotoUpload = ({ podId }: PhotoUploadProps) => {
 					handleFiles(e.dataTransfer.files);
 				}}
 				onClick={() => inputRef.current?.click()}
+				onKeyDown={(e) => {
+					if (e.key === "Enter" || e.key === " ") {
+						e.preventDefault();
+						inputRef.current?.click();
+					}
+				}}
 			>
 				<CloudUpload className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-muted-foreground/60 mb-2 sm:mb-3" />
 				<p className="text-sm text-muted-foreground mb-3">
 					<span className="hidden sm:inline">Drag & drop photos here, or </span>
 					<span className="sm:hidden">Tap to add photos</span>
 				</p>
-				<div className="flex items-center justify-center gap-2" onClick={(e) => e.stopPropagation()}>
+				<div className="flex items-center justify-center gap-2">
 					<Button
 						variant="outline"
 						size="sm"
-						onClick={() => inputRef.current?.click()}
+						onClick={(e) => {
+							e.stopPropagation();
+							inputRef.current?.click();
+						}}
 					>
 						Browse Files
 					</Button>
@@ -89,7 +114,10 @@ export const PhotoUpload = ({ podId }: PhotoUploadProps) => {
 						variant="outline"
 						size="sm"
 						className="sm:hidden"
-						onClick={() => cameraRef.current?.click()}
+						onClick={(e) => {
+							e.stopPropagation();
+							cameraRef.current?.click();
+						}}
 					>
 						<Camera className="h-4 w-4 mr-1" />
 						Camera
@@ -112,6 +140,12 @@ export const PhotoUpload = ({ podId }: PhotoUploadProps) => {
 					onChange={(e) => e.target.files && handleFiles(e.target.files)}
 				/>
 			</div>
+
+			{batchNotice && (
+				<p role="alert" className="text-sm text-destructive">
+					{batchNotice}
+				</p>
+			)}
 
 			{/* Previews */}
 			{previews.length > 0 && (
@@ -142,6 +176,7 @@ export const PhotoUpload = ({ podId }: PhotoUploadProps) => {
 							onClick={() => {
 								for (const p of previews) URL.revokeObjectURL(p.preview);
 								setPreviews([]);
+								setBatchNotice(null);
 							}}
 							disabled={isPending}
 						>
