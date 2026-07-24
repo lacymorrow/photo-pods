@@ -37,13 +37,15 @@ export async function getDashboardStats() {
     })
     .from(recordings);
 
+  // noUncheckedIndexedAccess makes destructured rows possibly undefined;
+  // aggregates always return one row, but default to 0 to satisfy the type.
   return {
-    recordings: recordingCount.count,
-    conversations: conversationCount.count,
-    speakers: speakerCount.count,
-    people: personCount.count,
-    knowledgeEntries: knowledgeCount.count,
-    totalDurationSeconds: totalDuration.total,
+    recordings: recordingCount?.count ?? 0,
+    conversations: conversationCount?.count ?? 0,
+    speakers: speakerCount?.count ?? 0,
+    people: personCount?.count ?? 0,
+    knowledgeEntries: knowledgeCount?.count ?? 0,
+    totalDurationSeconds: totalDuration?.total ?? 0,
   };
 }
 
