@@ -13,6 +13,7 @@ const navLinks = [
   { href: routes.admin.integrations, label: "Integrations" },
   { href: routes.admin.feedback, label: "Feedback" },
   { href: routes.admin.payments, label: "Payments" },
+  { href: routes.admin.moderationPods, label: "Moderation" },
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
