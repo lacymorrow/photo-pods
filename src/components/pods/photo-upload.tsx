@@ -66,6 +66,7 @@ export const PhotoUpload = ({ podId }: PhotoUploadProps) => {
 	return (
 		<div className="space-y-4">
 			{/* Drop zone */}
+			{/* biome-ignore lint/a11y/useSemanticElements: a real <button> can't wrap the nested Browse/Camera buttons */}
 			<div
 				role="button"
 				tabIndex={0}
