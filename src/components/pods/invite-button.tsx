@@ -20,7 +20,7 @@ export const InviteButton = ({ pod, contacts }: InviteButtonProps) => {
 	const [open, setOpen] = useState(false);
 
 	useEffect(() => {
-		if (params.get("invite") === "1") setOpen(true);
+		if (params?.get("invite") === "1") setOpen(true);
 	}, [params]);
 
 	return (

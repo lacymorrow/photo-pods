@@ -1,6 +1,7 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { Compass, Plus } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CreatePodSheet } from "./create-pod-sheet";
@@ -22,11 +23,19 @@ export const PodsPageClient = ({ pods }: PodsPageClientProps) => {
 						Your shared photo collections
 					</p>
 				</div>
-				<Button className="shrink-0" onClick={() => setCreateOpen(true)}>
-					<Plus className="h-4 w-4 mr-1" />
-					<span className="hidden sm:inline">New Pod</span>
-					<span className="sm:hidden">New</span>
-				</Button>
+				<div className="flex shrink-0 gap-2">
+					<Button variant="outline" asChild>
+						<Link href="/pods/discover">
+							<Compass className="h-4 w-4 mr-1" />
+							<span className="hidden sm:inline">Discover</span>
+						</Link>
+					</Button>
+					<Button onClick={() => setCreateOpen(true)}>
+						<Plus className="h-4 w-4 mr-1" />
+						<span className="hidden sm:inline">New Pod</span>
+						<span className="sm:hidden">New</span>
+					</Button>
+				</div>
 			</div>
 			<PodGrid pods={pods} onCreate={() => setCreateOpen(true)} />
 			<CreatePodSheet open={createOpen} onOpenChange={setCreateOpen} />

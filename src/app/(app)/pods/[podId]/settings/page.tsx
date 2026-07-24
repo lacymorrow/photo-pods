@@ -19,34 +19,37 @@ import { Textarea } from "@/components/ui/textarea";
 import { deletePod, getPod, updatePod } from "@/server/actions/pods";
 
 export default function PodSettingsPage() {
-	const params = useParams<{ podId: string }>();
+	// useParams is nullable during static prerender; this page only renders
+	// under /pods/[podId] so the id is present once mounted.
+	const podId = useParams<{ podId: string }>()?.podId;
 	const router = useRouter();
 	const [isPending, startTransition] = useTransition();
 	const [pod, setPod] = useState<Awaited<ReturnType<typeof getPod>> | null>(null);
 	const [confirmDelete, setConfirmDelete] = useState("");
 
 	useEffect(() => {
-		getPod(params.podId).then(setPod).catch(() => router.push("/pods"));
-	}, [params.podId, router]);
+		if (!podId) return;
+		getPod(podId).then(setPod).catch(() => router.push("/pods"));
+	}, [podId, router]);
 
-	if (!pod) return null;
+	if (!pod || !podId) return null;
 
 	const handleSave = (e: React.FormEvent<HTMLFormElement>) => {
 		e.preventDefault();
 		const fd = new FormData(e.currentTarget);
 		startTransition(async () => {
-			await updatePod(params.podId, {
+			await updatePod(podId, {
 				name: fd.get("name") as string,
 				description: (fd.get("description") as string) || undefined,
 				visibility: fd.get("visibility") as "public" | "private" | "group",
 			});
-			router.push(`/pods/${params.podId}`);
+			router.push(`/pods/${podId}`);
 		});
 	};
 
 	const handleDelete = () => {
 		startTransition(async () => {
-			await deletePod(params.podId);
+			await deletePod(podId);
 			router.push("/pods");
 		});
 	};
