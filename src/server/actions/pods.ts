@@ -669,17 +669,9 @@ export const requestPresignedUpload = async (
 		extForMime(contentType),
 	);
 
-	await database.insert(podMedia).values({
-		id: mediaId,
-		podId: req.podId,
-		uploadedById: ctx.viewer.userId,
-		type: mediaType,
-		status: "processing",
-		storageKey,
-		size: req.size,
-		mimeType: contentType,
-	});
-
+	// Fallback check must precede the insert: the legacy path the client is
+	// redirected to inserts its own row, so inserting here too would leave a
+	// permanently-`processing` orphan for every fallback upload (LAC-2912).
 	if (!isStorageConfigured()) {
 		return {
 			mediaId,
@@ -695,6 +687,17 @@ export const requestPresignedUpload = async (
 			},
 		};
 	}
+
+	await database.insert(podMedia).values({
+		id: mediaId,
+		podId: req.podId,
+		uploadedById: ctx.viewer.userId,
+		type: mediaType,
+		status: "processing",
+		storageKey,
+		size: req.size,
+		mimeType: contentType,
+	});
 
 	const config = loadStorageConfig();
 	const expiresInSeconds = 60 * 15;

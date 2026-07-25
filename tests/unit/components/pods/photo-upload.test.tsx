@@ -1,10 +1,13 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PhotoUpload } from "@/components/pods/photo-upload";
+import { uploadPodPhoto } from "@/lib/pods/upload-media-client";
 
-vi.mock("@/server/actions/pods", () => ({
-	uploadPhoto: vi.fn(async () => ({ success: true })),
+vi.mock("@/lib/pods/upload-media-client", () => ({
+	uploadPodPhoto: vi.fn(async () => undefined),
 }));
+
+const uploadMock = vi.mocked(uploadPodPhoto);
 
 // next/image needs the Next runtime for loaders; a plain <img> preserves the
 // src/alt contract the tests assert on.
@@ -34,6 +37,8 @@ describe("PhotoUpload (LAC-2915)", () => {
 		let n = 0;
 		URL.createObjectURL = vi.fn(() => `blob:mock-${++n}`);
 		URL.revokeObjectURL = vi.fn();
+		uploadMock.mockReset();
+		uploadMock.mockResolvedValue(undefined);
 	});
 
 	describe("HEIC previews", () => {
@@ -95,6 +100,48 @@ describe("PhotoUpload (LAC-2915)", () => {
 			expect(click).toHaveBeenCalledTimes(1);
 			fireEvent.keyDown(dropzone, { key: " " });
 			expect(click).toHaveBeenCalledTimes(2);
+		});
+	});
+
+	describe("presigned upload flow (LAC-2912)", () => {
+		it("uploads each staged file via the presigned client flow and clears the tray", async () => {
+			render(<PhotoUpload podId="pod-1" />);
+			const one = jpeg("one.jpg");
+			const two = jpeg("two.jpg");
+			selectFiles([one, two]);
+
+			fireEvent.click(screen.getByRole("button", { name: /upload 2 photos/i }));
+
+			await waitFor(() => expect(uploadMock).toHaveBeenCalledTimes(2));
+			expect(uploadMock).toHaveBeenNthCalledWith(1, "pod-1", one);
+			expect(uploadMock).toHaveBeenNthCalledWith(2, "pod-1", two);
+			await waitFor(() =>
+				expect(screen.queryByAltText("Preview 1")).not.toBeInTheDocument(),
+			);
+		});
+
+		it("keeps failed files in the tray and surfaces the error for retry", async () => {
+			uploadMock
+				.mockRejectedValueOnce(new Error("Storage upload failed (HTTP 403)"))
+				.mockResolvedValueOnce(undefined);
+			render(<PhotoUpload podId="pod-1" />);
+			selectFiles([jpeg("bad.jpg"), jpeg("good.jpg")]);
+
+			fireEvent.click(screen.getByRole("button", { name: /upload 2 photos/i }));
+
+			const alert = await screen.findByRole("alert");
+			expect(alert).toHaveTextContent("Storage upload failed (HTTP 403)");
+			// Only the failed file remains staged, so a retry re-sends just it.
+			expect(
+				screen.getByRole("button", { name: /upload 1 photo/i }),
+			).toBeInTheDocument();
+
+			uploadMock.mockResolvedValueOnce(undefined);
+			fireEvent.click(screen.getByRole("button", { name: /upload 1 photo/i }));
+			await waitFor(() => expect(uploadMock).toHaveBeenCalledTimes(3));
+			await waitFor(() =>
+				expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
+			);
 		});
 	});
 });
