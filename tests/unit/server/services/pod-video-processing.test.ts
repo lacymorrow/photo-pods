@@ -60,6 +60,46 @@ const buildMp4WithGps = (iso6709 = "+37.7749-122.4194/"): Buffer => {
 	return Buffer.concat([ftyp, moov, mdat]);
 };
 
+// Adobe XMP uuid: be7acfcb-97a9-42e8-9c71-999491e3afac
+const ADOBE_XMP_UUID = Buffer.from([
+	0xbe, 0x7a, 0xcf, 0xcb, 0x97, 0xa9, 0x42, 0xe8,
+	0x9c, 0x71, 0x99, 0x94, 0x91, 0xe3, 0xaf, 0xac,
+]);
+
+const buildUuidBox = (uuid: Buffer, payload: Buffer): Buffer => {
+	// uuid box: 4-byte size + "uuid" + 16-byte identifier + payload
+	const totalSize = 8 + 16 + payload.byteLength;
+	const header = Buffer.alloc(8);
+	header.writeUInt32BE(totalSize, 0);
+	header.write("uuid", 4, 4, "ascii");
+	return Buffer.concat([header, uuid, payload]);
+};
+
+const buildMp4WithXmpUuidGps = (): Buffer => {
+	const ftyp = box(
+		"ftyp",
+		Buffer.concat([
+			Buffer.from("mp42", "ascii"),
+			Buffer.from([0, 0, 0, 0]),
+			Buffer.from("mp42isom", "ascii"),
+		]),
+	);
+	const mvhd = box("mvhd", Buffer.alloc(100));
+	// XMP packet with GPS fields embedded in Adobe uuid box
+	const xmpPayload = Buffer.from(
+		'<?xpacket begin=""?><x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF>' +
+		'<rdf:Description xmlns:exif="http://ns.adobe.com/exif/1.0/">' +
+		"<exif:GPSLatitude>37,46.494N</exif:GPSLatitude>" +
+		"<exif:GPSLongitude>122,25.165W</exif:GPSLongitude>" +
+		"</rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end=\"r\"?>",
+		"ascii",
+	);
+	const uuidBox = buildUuidBox(ADOBE_XMP_UUID, xmpPayload);
+	const moov = box("moov", Buffer.concat([mvhd, uuidBox]));
+	const mdat = box("mdat", Buffer.from("fake-media-data-bytes"));
+	return Buffer.concat([ftyp, moov, mdat]);
+};
+
 const buildCleanMp4 = (): Buffer => {
 	const ftyp = box(
 		"ftyp",
@@ -116,6 +156,35 @@ describe("scrubMp4Metadata (LAC-2933)", () => {
 		const ftyp = box("ftyp", Buffer.from("mp42\0\0\0\0mp42", "ascii"));
 		const truncated = Buffer.concat([ftyp, header]);
 		expect(() => scrubMp4Metadata(truncated)).toThrow(/Malformed MP4/);
+	});
+});
+
+describe("scrubMp4Metadata + hasVideoGpsMetadata — uuid/XMP GPS (LAC-2949)", () => {
+	it("scrubMp4Metadata strips Adobe-XMP uuid box carrying GPS", () => {
+		const input = buildMp4WithXmpUuidGps();
+		// Sanity: XMP GPS markers and Adobe uuid identifier present before scrub.
+		expect(input.includes(Buffer.from("exif:GPSLatitude", "ascii"))).toBe(true);
+		expect(input.includes(Buffer.from("exif:GPSLongitude", "ascii"))).toBe(true);
+		expect(input.includes(ADOBE_XMP_UUID)).toBe(true);
+
+		const output = scrubMp4Metadata(input);
+
+		// Size-preserving: stco/co64 offsets remain valid.
+		expect(output.byteLength).toBe(input.byteLength);
+		// GPS marker bytes physically gone.
+		expect(output.includes(Buffer.from("exif:GPSLatitude", "ascii"))).toBe(false);
+		expect(output.includes(Buffer.from("exif:GPSLongitude", "ascii"))).toBe(false);
+		// Adobe uuid identifier gone (payload zeroed, type rewritten to free).
+		expect(output.includes(ADOBE_XMP_UUID)).toBe(false);
+	});
+
+	it("hasVideoGpsMetadata returns true on a file with an Adobe-XMP uuid box", () => {
+		expect(hasVideoGpsMetadata(buildMp4WithXmpUuidGps())).toBe(true);
+	});
+
+	it("hasVideoGpsMetadata returns false after scrubbing the uuid box", () => {
+		const scrubbed = scrubMp4Metadata(buildMp4WithXmpUuidGps());
+		expect(hasVideoGpsMetadata(scrubbed)).toBe(false);
 	});
 });
 
