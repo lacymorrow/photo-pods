@@ -1,19 +1,21 @@
 /**
  * @fileoverview MP4/MOV atom-level GPS metadata scrubbing for Photopods
- * video uploads (LAC-2933).
+ * video uploads (LAC-2933, LAC-2949).
  *
- * MP4 and QuickTime containers commonly carry GPS metadata inside the
- * `moov/udta` box (Apple `©xyz` ISO 6709 location) and `moov/meta` box
- * (Apple `keys`/`ilst` with `com.apple.quicktime.location.ISO6709`).
- * iOS and Android capture pipelines emit these by default. Once video is
- * enabled in production this leaks user location unless we strip it.
+ * MP4 and QuickTime containers carry GPS metadata in several locations:
+ * - `moov/udta`: Apple `©xyz` ISO 6709 location + Android capture tags
+ * - `moov/meta`: Apple `keys`/`ilst` with `com.apple.quicktime.location.*`
+ * - `uuid` boxes: ISOBMFF arbitrary metadata keyed by 16-byte UUID.
+ *   Adobe XMP (UUID be7acfcb-97a9-42e8-9c71-999491e3afac) can carry
+ *   `exif:GPSLatitude` / `exif:GPSLongitude`. GoPro, drones, and some
+ *   Android OEMs write proprietary GPS uuid boxes.
  *
- * Strategy: parse the box tree and, for every `udta`, `meta`, or `©xyz`
- * box we find, rewrite the box header type to `free` and zero the payload.
- * `free` is a standard padding box that spec-compliant parsers skip, so
- * downstream consumers see a well-formed file with no GPS metadata.
- * Because we keep box sizes constant, `stco`/`co64` chunk offsets do not
- * need to be fixed up.
+ * Strategy: parse the box tree and, for every `udta`, `meta`, `©xyz`, or
+ * `uuid` box we find, rewrite the box header type to `free` and zero the
+ * payload. `free` is a standard padding box that spec-compliant parsers
+ * skip, so downstream consumers see a well-formed file with no GPS
+ * metadata. Because we keep box sizes constant, `stco`/`co64` chunk
+ * offsets do not need to be fixed up.
  *
  * Fail-closed model (LAC-2928 pattern): parse errors throw from
  * `scrubMp4Metadata` and cause `hasVideoGpsMetadata` to return true.
@@ -44,6 +46,7 @@ const SCRUB_TYPES = new Set([
 	"udta", // Apple ©xyz ISO 6709 location + other capture tags live here
 	"meta", // ISOBMFF/QuickTime metadata container (keys/ilst)
 	"©xyz", // top-level or nested Apple location box
+	"uuid", // ISOBMFF arbitrary metadata — Adobe XMP, GoPro, proprietary GPS (LAC-2949)
 ]);
 
 const FREE_TYPE = Buffer.from("free", "ascii");
@@ -160,6 +163,12 @@ const GPS_MARKERS: Buffer[] = [
 	// Apple keys-atom key string. Any `com.apple.quicktime.location.*` variant
 	// starts with this prefix, so matching the prefix catches all of them.
 	Buffer.from("com.apple.quicktime.location", "ascii"),
+	// XMP GPS fields written by Adobe, GoPro, and desktop editors (LAC-2949).
+	Buffer.from("exif:GPSLatitude", "ascii"),
+	Buffer.from("exif:GPSLongitude", "ascii"),
+	// Adobe XMP uuid identifier (be7acfcb-97a9-42e8-9c71-999491e3afac).
+	// Presence means an XMP packet that may contain GPS survived scrubbing.
+	Buffer.from([0xbe, 0x7a, 0xcf, 0xcb, 0x97, 0xa9, 0x42, 0xe8, 0x9c, 0x71, 0x99, 0x94, 0x91, 0xe3, 0xaf, 0xac]),
 ];
 
 /**
