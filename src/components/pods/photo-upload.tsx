@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { isHeicFile } from "@/lib/pods/heic";
 import { acceptUploadBatch, MAX_UPLOAD_BATCH } from "@/lib/pods/limits";
-import { uploadPhoto } from "@/server/actions/pods";
+import { uploadPodPhoto } from "@/lib/pods/upload-media-client";
 
 interface PhotoUploadProps {
 	podId: string;
@@ -24,6 +24,7 @@ export const PhotoUpload = ({ podId }: PhotoUploadProps) => {
 	const [isDragging, setIsDragging] = useState(false);
 	const [previews, setPreviews] = useState<StagedPhoto[]>([]);
 	const [batchNotice, setBatchNotice] = useState<string | null>(null);
+	const [uploadError, setUploadError] = useState<string | null>(null);
 	const [isPending, startTransition] = useTransition();
 	const inputRef = useRef<HTMLInputElement>(null);
 	const cameraRef = useRef<HTMLInputElement>(null);
@@ -63,18 +64,31 @@ export const PhotoUpload = ({ podId }: PhotoUploadProps) => {
 
 	const handleUpload = () => {
 		if (previews.length === 0) return;
+		setUploadError(null);
 
 		startTransition(async () => {
-			for (const { file } of previews) {
-				const formData = new FormData();
-				formData.set("file", file);
-				await uploadPhoto(podId, formData);
-			}
+			// Sequential on purpose: one signed PUT at a time keeps mobile
+			// connections happy and stays under per-user upload rate limits.
+			const failed: StagedPhoto[] = [];
+			let firstError: string | null = null;
 			for (const p of previews) {
-				if (p.preview) URL.revokeObjectURL(p.preview);
+				try {
+					await uploadPodPhoto(podId, p.file);
+					if (p.preview) URL.revokeObjectURL(p.preview);
+				} catch (err) {
+					failed.push(p);
+					firstError ??=
+						err instanceof Error ? err.message : "Upload failed. Please retry.";
+				}
 			}
-			setPreviews([]);
-			setBatchNotice(null);
+			// Failed files stay in the tray so a retry only re-sends those.
+			setPreviews(failed);
+			setUploadError(
+				failed.length > 1 && firstError
+					? `${failed.length} photos failed to upload — ${firstError}`
+					: firstError,
+			);
+			if (failed.length === 0) setBatchNotice(null);
 		});
 	};
 
@@ -163,6 +177,12 @@ export const PhotoUpload = ({ podId }: PhotoUploadProps) => {
 				</p>
 			)}
 
+			{uploadError && (
+				<p role="alert" className="text-sm text-destructive">
+					{uploadError}
+				</p>
+			)}
+
 			{/* Previews */}
 			{previews.length > 0 && (
 				<div className="space-y-3">
@@ -206,6 +226,7 @@ export const PhotoUpload = ({ podId }: PhotoUploadProps) => {
 								}
 								setPreviews([]);
 								setBatchNotice(null);
+								setUploadError(null);
 							}}
 							disabled={isPending}
 						>
