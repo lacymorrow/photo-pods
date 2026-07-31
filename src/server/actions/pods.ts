@@ -16,6 +16,7 @@ import {
 	podMembers,
 	pods,
 } from "@/server/db/pods-schema";
+import { stripImageMetadata } from "@/server/services/pod-media-metadata";
 import * as policy from "@/server/services/pod-policy";
 import * as reactions from "@/server/services/pod-reactions";
 import {
@@ -728,7 +729,12 @@ export const requestPresignedUpload = async (
 /**
  * Client callback after the presigned PUT succeeds. Marks the media
  * `ready` and stores dimensions/duration if the client extracted them.
- * (Server-side thumbnailing/EXIF stripping is the worker's job — LAC-2855 §3.)
+ *
+ * Photos get their EXIF/XMP metadata stripped here, server-side (LAC-3169).
+ * The client-side canvas strip (LAC-2917 H1) silently no-ops for HEIC in
+ * every browser except Safari — and any client strip is bypassable — so this
+ * is the authoritative S4 enforcement point until the LAC-2855 §3 worker
+ * takes it over. Fail-closed: an image we can't parse never becomes `ready`.
  */
 export const finalizeUpload = async (input: {
 	mediaId: string;
@@ -748,6 +754,67 @@ export const finalizeUpload = async (input: {
 	if (media.uploadedById !== viewer.userId) throw new Error("Not your upload");
 
 	const config = loadStorageConfig();
+
+	let exifStrippedAt: Date | undefined;
+	let strippedSize: number | undefined;
+	if (
+		media.type === "photo" &&
+		media.storageKey &&
+		config.provider !== "vercel-blob"
+	) {
+		const objectRes = await fetch(
+			presign({
+				config,
+				method: "GET",
+				key: media.storageKey,
+				expiresInSeconds: 300,
+			}),
+		);
+		if (!objectRes.ok) {
+			throw new Error(
+				`Could not read uploaded object (HTTP ${objectRes.status})`,
+			);
+		}
+		const stripped = stripImageMetadata(
+			new Uint8Array(await objectRes.arrayBuffer()),
+		);
+		if (!stripped.ok) {
+			// The row stays `processing` and never becomes visible; orphan
+			// cleanup belongs to the LAC-2855 §3 worker.
+			throw new Error(
+				`Upload rejected — image could not be verified metadata-free: ${stripped.reason}`,
+			);
+		}
+		if (stripped.changed) {
+			const putRes = await fetch(
+				presign({
+					config,
+					method: "PUT",
+					key: media.storageKey,
+					contentType: media.mimeType ?? undefined,
+					contentLength: stripped.data.byteLength,
+					expiresInSeconds: 300,
+				}),
+				{
+					method: "PUT",
+					// Content-Length is derived from the body by fetch and matches
+					// the signed value; Content-Type must match the signature.
+					headers: media.mimeType
+						? { "Content-Type": media.mimeType }
+						: undefined,
+					body: stripped.data as unknown as BodyInit,
+				},
+			);
+			if (!putRes.ok) {
+				throw new Error(
+					`Could not write stripped object (HTTP ${putRes.status})`,
+				);
+			}
+			strippedSize = stripped.data.byteLength;
+		}
+		exifStrippedAt = new Date();
+	}
+
 	const publicUrl = media.storageKey
 		? publicUrlForKey(config, media.storageKey)
 		: null;
@@ -762,6 +829,8 @@ export const finalizeUpload = async (input: {
 			caption: input.caption ?? media.caption,
 			url: publicUrl ?? media.url,
 			readyAt: media.type === "video" ? media.readyAt : new Date(),
+			...(exifStrippedAt ? { exifStripped: exifStrippedAt } : {}),
+			...(strippedSize != null ? { size: strippedSize } : {}),
 		})
 		.where(eq(podMedia.id, input.mediaId))
 		.returning();
@@ -823,16 +892,33 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
 	const ext = extForMime(contentType);
 	const safeName = `${baseName}.${ext}`;
 
+	// Server-side EXIF/XMP strip (LAC-3169, S4). This path has the raw bytes
+	// in hand, so strip before anything is stored. Fail-closed: an image we
+	// can't parse can't be proven GPS-free.
+	const stripped = stripImageMetadata(new Uint8Array(await file.arrayBuffer()));
+	if (!stripped.ok) {
+		throw new Error(
+			`Upload rejected — image could not be verified metadata-free: ${stripped.reason}`,
+		);
+	}
+	const cleanFile = new File([stripped.data as BlobPart], safeName, {
+		type: contentType,
+	});
+
 	let url: string;
 	try {
 		const { put } = await import("@vercel/blob");
-		const blob = await put(`pods/${podId}/${Date.now()}-${safeName}`, file, {
-			access: "public",
-		});
+		const blob = await put(
+			`pods/${podId}/${Date.now()}-${safeName}`,
+			cleanFile,
+			{
+				access: "public",
+			},
+		);
 		url = blob.url;
 	} catch {
 		const { uploadFile } = await import("@/server/services/file");
-		const result = await uploadFile(file as any);
+		const result = await uploadFile(cleanFile as any);
 		url = result.url;
 	}
 
@@ -848,7 +934,8 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
 				status: "ready",
 				url,
 				mimeType: contentType,
-				size: file.size,
+				size: cleanFile.size,
+				exifStripped: new Date(),
 				caption: (formData.get("caption") as string) ?? null,
 				readyAt: new Date(),
 			})
