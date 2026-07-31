@@ -89,3 +89,11 @@ ai.mdx
 
 # Supabase
 supabase/.temp/
+
+# Photopods E2E — generated large fixtures (see scripts/gen-e2e-media.ts).
+# gps-tagged.jpg is intentionally committed; everything else is regenerated.
+tests/e2e/fixtures/photo-*mb.jpg
+tests/e2e/fixtures/video-*mb.mp4
+tests/e2e/fixtures/batch-*/
+# Seeded manifest is environment-specific and contains real user IDs.
+tests/e2e/fixtures/qa.json
