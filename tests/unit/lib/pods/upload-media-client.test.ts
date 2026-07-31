@@ -13,6 +13,14 @@ vi.mock("@/server/actions/pods", () => ({
 	uploadPhoto: mocks.uploadPhoto,
 }));
 
+// The client strip (LAC-2917 H1) is unit-tested separately; under jsdom its
+// <img> fallback never fires onload/onerror, so it hangs this suite whenever
+// createImageBitmap is made to reject (LAC-3169). Identity-mock it so this
+// file only exercises the upload orchestration.
+vi.mock("@/lib/pods/strip-exif-client", () => ({
+	stripExifClientSide: vi.fn(async (file: File) => file),
+}));
+
 import { uploadPodPhoto } from "@/lib/pods/upload-media-client";
 
 const makeFile = (name: string, type: string, bytes = 16) =>
