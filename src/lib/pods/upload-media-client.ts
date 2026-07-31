@@ -15,6 +15,7 @@ import {
 	requestPresignedUpload,
 	uploadPhoto,
 } from "@/server/actions/pods";
+import { stripExifClientSide } from "@/lib/pods/strip-exif-client";
 
 /**
  * Best-effort dimension probe so `finalizeUpload` can persist width/height —
@@ -41,18 +42,27 @@ export const uploadPodPhoto = async (
 	podId: string,
 	file: File,
 ): Promise<void> => {
+	// Client-side EXIF/GPS strip (LAC-2917 H1). Canvas re-encode drops every
+	// EXIF/XMP/IPTC segment before bytes leave the browser. No-op for non-image
+	// mimes (videos handled by their own path). Bypassable by a hostile client
+	// so the LAC-2855 §3 finalize worker must re-enforce server-side.
+	const uploadFile = file.type.startsWith("image/")
+		? await stripExifClientSide(file)
+		: file;
+
 	const presigned = await requestPresignedUpload({
 		podId,
-		filename: file.name,
-		contentType: file.type,
-		size: file.size,
+		filename: uploadFile.name,
+		contentType: uploadFile.type,
+		size: uploadFile.size,
 	});
 
 	if (presigned.fallback) {
 		// Storage not configured (pre-R2 dev): the legacy action still works
-		// there and does its own EXIF handling + DB insert, so no finalize.
+		// there and does its own DB insert, so no finalize. Send the stripped
+		// file so dev also honors the S4 default.
 		const formData = new FormData();
-		formData.set("file", file);
+		formData.set("file", uploadFile);
 		await uploadPhoto(podId, formData);
 		return;
 	}
@@ -65,12 +75,12 @@ export const uploadPodPhoto = async (
 	const res = await fetch(presigned.uploadUrl, {
 		method: presigned.method,
 		headers,
-		body: file,
+		body: uploadFile,
 	});
 	if (!res.ok) {
 		throw new Error(`Storage upload failed (HTTP ${res.status})`);
 	}
 
-	const dims = await readImageDimensions(file);
+	const dims = await readImageDimensions(uploadFile);
 	await finalizeUpload({ mediaId: presigned.mediaId, ...dims });
 };
