@@ -19,6 +19,10 @@ import {
 import * as policy from "@/server/services/pod-policy";
 import * as reactions from "@/server/services/pod-reactions";
 import {
+	collectMediaKeys,
+	deleteObjectsWithRetry,
+} from "@/server/services/pod-storage-cleanup";
+import {
 	buildStorageKey,
 	isStorageConfigured,
 	loadStorageConfig,
@@ -183,7 +187,20 @@ export const deletePod = async (podId: string) => {
 	await policy.guardPod(podId, viewer, policy.isOwner, "delete");
 	const database = requireDb();
 
+	// GDPR (LAC-2917 H2): gather every storage key attached to the pod so we
+	// can issue R2 deletes after the DB rows are gone. Cascades take care of
+	// the DB side; storage cleanup is best-effort with a retry queue.
+	const mediaRows = await database
+		.select({
+			storageKey: podMedia.storageKey,
+			variants: podMedia.variants,
+		})
+		.from(podMedia)
+		.where(eq(podMedia.podId, podId));
+	const keys = mediaRows.flatMap((m) => collectMediaKeys(m));
+
 	await database.delete(pods).where(eq(pods.id, podId));
+	if (keys.length > 0) await deleteObjectsWithRetry(keys);
 	revalidatePath("/pods");
 };
 
@@ -579,6 +596,24 @@ export const unfollowPod = async (podId: string) => {
 	revalidatePath(`/pods/${podId}`);
 };
 
+// Sliding-window upload limiter (per user). MVP ceiling: 100 uploads/hour to
+// bound storage cost and abuse. Same in-memory caveats as the other limiters
+// in this file — a durable Redis-backed limiter is a follow-up (LAC-2859 §4).
+const UPLOAD_WINDOW_MS = 60 * 60 * 1000;
+const UPLOAD_MAX_PER_WINDOW = 100;
+const uploadAttempts = new Map<string, number[]>();
+
+const checkUploadRateLimit = (userId: string): void => {
+	const now = Date.now();
+	const cutoff = now - UPLOAD_WINDOW_MS;
+	const hits = (uploadAttempts.get(userId) ?? []).filter((t) => t > cutoff);
+	if (hits.length >= UPLOAD_MAX_PER_WINDOW) {
+		throw new Error("Upload limit reached. Please try again later.");
+	}
+	hits.push(now);
+	uploadAttempts.set(userId, hits);
+};
+
 // --- Media: presigned upload flow ---
 
 const PHOTO_MIMES = new Set([
@@ -641,6 +676,8 @@ export const requestPresignedUpload = async (
 	const viewer = await viewerOf();
 	const ctx = await policy.guardUpload(req.podId, viewer);
 	if (!ctx.viewer.userId) throw new Error("Sign in required");
+
+	checkUploadRateLimit(ctx.viewer.userId);
 
 	const contentType = req.contentType.toLowerCase();
 	let mediaType: MediaType;
@@ -797,6 +834,7 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
 	const viewer = await viewerOf();
 	const ctx = await policy.guardUpload(podId, viewer);
 	if (!ctx.viewer.userId) throw new Error("Sign in required");
+	checkUploadRateLimit(ctx.viewer.userId);
 	const database = requireDb();
 
 	const file = formData.get("file") as File;
@@ -894,6 +932,12 @@ export const deletePhoto = async (photoId: string) => {
 			})
 			.where(eq(pods.id, media.podId));
 	});
+
+	// GDPR (LAC-2917 H2): delete the R2 objects (original + variants) after
+	// the DB row is gone. Best-effort — failed keys go to the retry queue.
+	const keys = collectMediaKeys(media);
+	if (keys.length > 0) await deleteObjectsWithRetry(keys);
+
 	revalidatePath(`/pods/${media.podId}`);
 };
 
