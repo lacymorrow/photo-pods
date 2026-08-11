@@ -81,4 +81,54 @@ describe("upload rate limit (LAC-2917 H3)", () => {
 		}
 		await expect(requestAs("rl-user-c")).resolves.toBeDefined();
 	});
+
+	it("resets after the 1-hour sliding window elapses", async () => {
+		vi.useFakeTimers();
+		try {
+			vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+			for (let i = 0; i < 100; i++) {
+				await expect(requestAs("rl-user-d")).resolves.toBeDefined();
+			}
+			await expect(requestAs("rl-user-d")).rejects.toThrow(
+				/upload limit reached/i,
+			);
+
+			// Advance past the full window so every prior timestamp is now stale.
+			vi.advanceTimersByTime(60 * 60 * 1000 + 1);
+
+			await expect(requestAs("rl-user-d")).resolves.toBeDefined();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("expires only the entries that fall outside the sliding window", async () => {
+		vi.useFakeTimers();
+		try {
+			vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+
+			// One entry at T=0, then fill to 100 near the end of the window.
+			await expect(requestAs("rl-user-e")).resolves.toBeDefined();
+			vi.advanceTimersByTime(59 * 60 * 1000);
+			for (let i = 0; i < 99; i++) {
+				await expect(requestAs("rl-user-e")).resolves.toBeDefined();
+			}
+			// 100 entries in window → next request rejected.
+			await expect(requestAs("rl-user-e")).rejects.toThrow(
+				/upload limit reached/i,
+			);
+
+			// Move just past the 1h mark so only the T=0 entry ages out; the 99
+			// entries added at T=59min are still within the window.
+			vi.advanceTimersByTime(60 * 1000 + 1);
+
+			// One slot freed → next request succeeds, then we're capped again.
+			await expect(requestAs("rl-user-e")).resolves.toBeDefined();
+			await expect(requestAs("rl-user-e")).rejects.toThrow(
+				/upload limit reached/i,
+			);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 });
