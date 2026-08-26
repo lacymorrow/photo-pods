@@ -20,8 +20,13 @@ interface Props {
 
 export default async function PodDetailPage({ params }: Props) {
 	const { podId } = await params;
+	// Public pods are world-viewable per the privacy matrix (pod-policy.ts):
+	// anonymous guests may view. Do NOT gate the page on a session here — that
+	// would make public pods unreachable from discovery for logged-out browsers
+	// (LAC-3456). getPod/getPodPhotos route through policy.canView and throw
+	// "Access denied" for private/group pods, which we map to notFound() below.
 	const session = await auth();
-	if (!session?.user?.id) notFound();
+	const userId = session?.user?.id ?? null;
 
 	let pod: Awaited<ReturnType<typeof getPod>>;
 	try {
@@ -31,7 +36,6 @@ export default async function PodDetailPage({ params }: Props) {
 	}
 
 	const { photos } = await getPodPhotos(podId);
-	const currentMember = pod.members.find((m) => m.userId === session.user.id);
 	const isOwner = pod.viewer.isOwner;
 	const canUpload = pod.viewer.canUpload;
 
@@ -39,7 +43,7 @@ export default async function PodDetailPage({ params }: Props) {
 	const PrivacyIcon = privacy.icon;
 	const canInvite = pod.viewer.canInvite;
 	const contacts = pod.members
-		.filter((m) => m.userId !== session.user.id)
+		.filter((m) => m.userId !== userId)
 		.map((m) => ({
 			id: m.userId,
 			name: m.user?.name ?? "Member",
@@ -106,7 +110,7 @@ export default async function PodDetailPage({ params }: Props) {
 			<PhotoGrid
 				photos={photos}
 				canDelete={isOwner}
-				currentUserId={session.user.id}
+				currentUserId={userId ?? undefined}
 			/>
 
 			{/* Members + Invite */}
@@ -118,7 +122,7 @@ export default async function PodDetailPage({ params }: Props) {
 						podId={podId}
 						members={pod.members}
 						isOwner={isOwner}
-						currentUserId={session.user.id}
+						currentUserId={userId ?? undefined}
 					/>
 				</div>
 				{canInvite && (

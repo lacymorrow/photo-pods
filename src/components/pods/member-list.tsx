@@ -27,7 +27,10 @@ interface MemberListProps {
 	podId: string;
 	members: Member[];
 	isOwner: boolean;
-	currentUserId: string;
+	// Optional: anonymous guests viewing a public pod have no user id. No member
+	// will match `undefined`, so the "you" badge and owner-only member controls
+	// simply never render for guests (LAC-3456).
+	currentUserId?: string;
 }
 
 const roleIcons = {
