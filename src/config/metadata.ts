@@ -50,7 +50,7 @@ export const defaultMetadata: Metadata = {
   metadataBase: new URL(siteConfig.url),
   title: {
     default: siteConfig.title,
-    template: `%s | ${siteConfig.tagline}`,
+    template: `%s | ${siteConfig.title}`,
   },
   description: siteConfig.description,
   applicationName: siteConfig.title,
