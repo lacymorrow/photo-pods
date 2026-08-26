@@ -23,7 +23,6 @@ import {
 } from "@/components/ui/sidebar";
 import { routes } from "@/config/routes";
 import { siteConfig } from "@/config/site-config";
-import { env } from "@/env";
 import { cn } from "@/lib/utils";
 
 const data = [

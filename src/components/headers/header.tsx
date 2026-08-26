@@ -198,17 +198,15 @@ export const Header: React.FC<HeaderProps> = ({
                     </Link>
                   )}
                   {isLoggedIn && (
-                    <>
-                      <Link
-                        href={routes.pods.index}
-                        className={cn(
-                          buttonVariants({ variant: "default" }),
-                          "w-full justify-center"
-                        )}
-                      >
-                        My Pods
-                      </Link>
-                    </>
+                    <Link
+                      href={routes.pods.index}
+                      className={cn(
+                        buttonVariants({ variant: "default" }),
+                        "w-full justify-center"
+                      )}
+                    >
+                      My Pods
+                    </Link>
                   )}
                 </nav>
               </SheetContent>
@@ -229,29 +227,27 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {!isLogoOnly && (
-          <>
-            <div className="flex items-center gap-2 lg:gap-4 shrink-0">
-              {/* Search */}
-              {searchVariant === "menu" && (
-                <SearchMenu
-                  buttonText={searchPlaceholder}
-                  minimal={true}
-                  buttonClassName="hidden md:flex min-w-[40px]"
-                  collapsible
-                />
-              )}
+          <div className="flex items-center gap-2 lg:gap-4 shrink-0">
+            {/* Search */}
+            {searchVariant === "menu" && (
+              <SearchMenu
+                buttonText={searchPlaceholder}
+                minimal={true}
+                buttonClassName="hidden md:flex min-w-[40px]"
+                collapsible
+              />
+            )}
 
-              {!isLoggedIn && <ThemeToggle variant="ghost" size="icon" className="rounded-full" />}
+            {!isLoggedIn && <ThemeToggle variant="ghost" size="icon" className="rounded-full" />}
 
-              <UserMenu user={user} />
+            <UserMenu user={user} />
 
-              {!isLoggedIn && (
-                <LoginButton variant="outline" nextUrl={routes.pods.index}>
-                  Sign in
-                </LoginButton>
-              )}
-            </div>
-          </>
+            {!isLoggedIn && (
+              <LoginButton variant="outline" nextUrl={routes.pods.index}>
+                Sign in
+              </LoginButton>
+            )}
+          </div>
         )}
       </nav>
     </header>

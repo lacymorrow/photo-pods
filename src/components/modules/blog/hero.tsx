@@ -1,5 +1,4 @@
 import Image from "next/image";
-import type React from "react";
 import { Link } from "@/components/primitives/link";
 import { siteConfig } from "@/config/site-config";
 export const BlogHero = () => {

@@ -4,13 +4,11 @@ import {
   DesktopIcon,
   ExitIcon,
   GearIcon,
-  LockClosedIcon,
   MoonIcon,
   PersonIcon,
   RocketIcon,
   SunIcon,
 } from "@radix-ui/react-icons";
-import { Sparkles } from "lucide-react";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
 import type * as React from "react";
@@ -66,8 +64,6 @@ export function UserMenuDropdown({
   setIsOpen,
   user,
   isAdmin = false,
-  showUpgrade = false,
-  hasActiveSubscription = false,
   showOnboarding = false,
   theme,
   handleThemeChange,
