@@ -4,7 +4,6 @@ import { siteConfig } from "@/config/site-config";
 /*
  * LLM-discoverable content files:
  * - /llms.txt       (short intro for LLMs)
- * - /llms-full.txt  (comprehensive reference for LLMs)
  * These are served as static files from the public/ directory.
  */
 

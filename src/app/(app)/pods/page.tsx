@@ -2,6 +2,7 @@ import { Camera, Plus } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { PodsPageClient } from "@/components/pods/pods-page-client";
+import { routes } from "@/config/routes";
 import { getUserPods } from "@/server/actions/pods";
 import { auth } from "@/server/auth";
 
@@ -38,17 +39,17 @@ export default async function PodsPage() {
 							<Plus className="h-4 w-4 text-primary" />
 						</div>
 					</div>
-					<h1 className="text-3xl font-bold">Welcome to Photo Pods</h1>
+					<h1 className="text-3xl font-bold">Welcome to Photopods</h1>
 					<p className="text-muted-foreground mt-3 max-w-md leading-relaxed">
 						Create private photo groups, invite your friends, and share
 						moments together. Sign in to get started.
 					</p>
 					<div className="flex gap-3 mt-8">
 						<Button size="lg" asChild>
-							<Link href="/auth/sign-in">Sign In</Link>
+							<Link href={routes.auth.signIn}>Sign In</Link>
 						</Button>
 						<Button size="lg" variant="outline" asChild>
-							<Link href="/pods/discover">Discover Public Pods</Link>
+							<Link href={routes.pods.discover}>Discover Public Pods</Link>
 						</Button>
 					</div>
 				</div>

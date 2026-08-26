@@ -86,7 +86,7 @@ export default async function AccountPage() {
                 <p>
                   {hasVercel
                     ? "Your Vercel account is connected. You can now deploy projects directly to Vercel."
-                    : "Connect your Vercel account to deploy projects directly from Shipkit."}
+                    : "Connect your Vercel account to deploy projects directly from Photopods."}
                 </p>
               </div>
             </CardContent>
@@ -114,7 +114,7 @@ export default async function AccountPage() {
               <p>
                 {hasGitHub
                   ? "Your GitHub account is connected via OAuth. You can now create repositories and deploy projects."
-                  : "Connect your GitHub account with OAuth to create repositories and deploy projects directly from Shipkit."}
+                  : "Connect your GitHub account with OAuth to create repositories and deploy projects directly from Photopods."}
               </p>
             </div>
           </CardContent>

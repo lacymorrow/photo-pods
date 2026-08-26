@@ -3,20 +3,17 @@
 import { HamburgerMenuIcon } from "@radix-ui/react-icons";
 import { useWindowScroll } from "@uidotdev/usehooks";
 import { cva } from "class-variance-authority";
-import { AnimatePresence, motion } from "framer-motion";
 import { useSession } from "next-auth/react";
 import type React from "react";
 
 import { Icon } from "@/components/assets/icon";
 import { LoginButton } from "@/components/buttons/sign-in-button";
-import { SearchAi } from "@/components/modules/search/search-ai";
 import { SearchMenu } from "@/components/modules/search/search-menu";
 import { UserMenu } from "@/components/modules/user/user-menu";
 import { Link } from "@/components/primitives/link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ThemeToggle } from "@/components/ui/shipkit/theme";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { NavLink } from "@/config/navigation";
 import { defaultNavLinks as navigationDefaultNavLinks } from "@/config/navigation";
 import { PriorityNav } from "@/components/ui/priority-nav";
@@ -26,7 +23,6 @@ import { useSignInRedirectUrl } from "@/hooks/use-auth-redirect";
 import { cn } from "@/lib/utils";
 import styles from "@/styles/header.module.css";
 import type { User } from "@/types/user";
-import { BuyButton } from "../buttons/lemonsqueezy-buy-button";
 
 interface HeaderProps {
   navLinks?: NavLink[];
@@ -37,16 +33,10 @@ interface HeaderProps {
   /**
    * Controls which search control is rendered.
    * - "menu": renders the standard command menu search (default)
-   * - "ai": renders the AI search input on the right side
    * - "none": renders no search control
    */
-  searchVariant?: "ai" | "menu" | "none";
+  searchVariant?: "menu" | "none";
   variant?: "default" | "sticky" | "floating" | "logo-only" | "minimal";
-  /**
-   * When set, shows an animated CTA that switches after the given scroll threshold (in px).
-   * If undefined, shows the default static CTA.
-   */
-  animatedCTAOnScroll?: number;
   /**
    * When set and variant is "floating", toggles opaque style after the given scroll threshold (in px).
    */
@@ -84,7 +74,6 @@ export const Header: React.FC<HeaderProps> = ({
   variant = "default",
   searchPlaceholder = `Search ${siteConfig.title}...`,
   searchVariant = "menu",
-  animatedCTAOnScroll,
   opaqueOnScroll,
   user,
   className,
@@ -102,9 +91,8 @@ export const Header: React.FC<HeaderProps> = ({
   // Minimal variant: logo + a few text links + theme toggle
   if (variant === "minimal") {
     const minimalLinks: NavLink[] = [
-      { href: routes.blog, label: "Blog" },
-      { href: "/changelog", label: "Changelog" },
-      { href: routes.docs, label: "Docs" },
+      { href: routes.pods.index, label: "My Pods" },
+      { href: routes.pods.discover, label: "Discover" },
     ];
 
     return (
@@ -186,9 +174,6 @@ export const Header: React.FC<HeaderProps> = ({
                       buttonClassName="w-full justify-start"
                     />
                   )}
-                  {searchVariant === "ai" && (
-                    <SearchAi buttonText={searchPlaceholder} className="w-full" />
-                  )}
                   {navLinks.map((link) => (
                     <Link
                       key={`${link.href}-${link.label}`}
@@ -202,37 +187,26 @@ export const Header: React.FC<HeaderProps> = ({
                     </Link>
                   ))}
                   {!isLoggedIn && (
-                    <>
-                      <Link
-                        href={routes.launch}
-                        className={cn(
-                          buttonVariants({ variant: "default" }),
-                          "w-full justify-center"
-                        )}
-                      >
-                        {`Get ${siteConfig.title}`}
-                      </Link>
-                      <Link
-                        href={signInRedirectUrl}
-                        className={cn(
-                          buttonVariants({ variant: "ghost" }),
-                          "w-full justify-center"
-                        )}
-                      >
-                        Login
-                      </Link>
-                    </>
+                    <Link
+                      href={signInRedirectUrl}
+                      className={cn(
+                        buttonVariants({ variant: "default" }),
+                        "w-full justify-center"
+                      )}
+                    >
+                      Sign in
+                    </Link>
                   )}
                   {isLoggedIn && (
                     <>
                       <Link
-                        href={routes.app.dashboard}
+                        href={routes.pods.index}
                         className={cn(
                           buttonVariants({ variant: "default" }),
                           "w-full justify-center"
                         )}
                       >
-                        Dashboard
+                        My Pods
                       </Link>
                     </>
                   )}
@@ -266,63 +240,16 @@ export const Header: React.FC<HeaderProps> = ({
                   collapsible
                 />
               )}
-              {searchVariant === "ai" && (
-                <SearchAi
-                  buttonText={searchPlaceholder}
-                  className="hidden md:flex min-w-[40px]"
-                  collapsible
-                />
-              )}
 
               {!isLoggedIn && <ThemeToggle variant="ghost" size="icon" className="rounded-full" />}
 
               <UserMenu user={user} />
 
-              {!isLoggedIn &&
-                (animatedCTAOnScroll ? (
-                  <AnimatePresence mode="wait">
-                    {scrollY > animatedCTAOnScroll ? (
-                      <motion.div
-                        key="compact"
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.9 }}
-                        transition={{ duration: 0.1 }}
-                      >
-                        <TooltipProvider delayDuration={0}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="relative -m-1 p-1">
-                                <BuyButton />
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent
-                              side="bottom"
-                              sideOffset={3}
-                              className="-mt-3 select-none border-none bg-transparent p-0 text-xs text-muted-foreground shadow-none data-[state=delayed-open]:animate-fadeDown"
-                            >
-                              <LoginButton className="hover:text-foreground">or Login</LoginButton>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="full"
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.9 }}
-                        transition={{ duration: 0.1 }}
-                      >
-                        <LoginButton variant="outline" nextUrl={routes.app.dashboard}>
-                          Dashboard
-                        </LoginButton>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                ) : (
-                  <BuyButton />
-                ))}
+              {!isLoggedIn && (
+                <LoginButton variant="outline" nextUrl={routes.pods.index}>
+                  Sign in
+                </LoginButton>
+              )}
             </div>
           </>
         )}

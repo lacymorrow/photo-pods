@@ -165,7 +165,7 @@ export function WaitlistForm() {
                   Early Access Application
                 </CardTitle>
                 <CardDescription>
-                  Just a few questions to help us prioritize features and make sure Shipkit fits
+                  Just a few questions to help us prioritize features and make sure Photopods fits
                   your needs.
                 </CardDescription>
               </CardHeader>
@@ -310,7 +310,7 @@ export function WaitlistForm() {
                   </Button>
 
                   <p className="text-center text-xs text-slate-500 dark:text-slate-400">
-                    We'll only email you about Shipkit updates. No spam, no selling your data, no
+                    We'll only email you about Photopods updates. No spam, no selling your data, no
                     BS.
                   </p>
                 </form>

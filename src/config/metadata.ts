@@ -171,19 +171,6 @@ export const constructMetadata = ({
 export const routeMetadata = {
   home: {
     title: `${siteConfig.title} - ${siteConfig.tagline}`,
-    description: `Transform your app idea into reality with ${siteConfig.title}'s all-in-one development platform. Built with Next.js, TypeScript, and modern tools for rapid, production-ready deployment.`,
-  },
-  features: {
-    title: `Features - Modern App Development Made Simple | ${siteConfig.title}`,
-    description: `Discover how ${siteConfig.title} accelerates app development with Builder.io, Payload CMS, Auth.js, and more. Get enterprise-grade features without the complexity.`,
-  },
-  pricing: {
-    title: `Simple, Transparent Pricing | ${siteConfig.title}`,
-    description:
-      "Choose the perfect plan for your app. Start free, scale as you grow. All plans include core features, world-class support, and automatic updates.",
-  },
-  docs: {
-    title: `Documentation - Build Better Apps Faster | ${siteConfig.title}`,
-    description: `Comprehensive guides, API references, and examples to help you build production-ready apps with ${siteConfig.title}. From quick starts to advanced topics.`,
+    description: siteConfig.description,
   },
 };

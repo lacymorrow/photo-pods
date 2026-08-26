@@ -227,26 +227,10 @@ export default async function CheckoutSuccessPage({
             <LoginButton />
           )}
 
-          {canDownload && email && (
-            <div className="mt-20 text-center">
-              <h3 className="mb-4 text-lg font-semibold">Just want the code?</h3>
-              {/* Download button - direct link with email param */}
-              <Button variant="outline" size="lg" className={cn("w-full")} asChild>
-                <Link href={`${routes.api.download}?email=${encodeURIComponent(email)}`}>
-                  <DownloadIcon className="mr-2 h-4 w-4" />
-                  Download {siteConfig.title}
-                </Link>
-              </Button>
-            </div>
-          )}
-
           {/* Additional resources */}
           <div className="mt-20 text-center">
             <h3 className="mb-4 text-lg font-semibold">Need Help Getting Started?</h3>
             <div className="flex flex-wrap justify-center gap-4">
-              <Button variant="outline" asChild>
-                <Link href={routes.docs}>View Documentation</Link>
-              </Button>
               <Button variant="outline" asChild>
                 <Link href={routes.contact}>Contact Support</Link>
               </Button>

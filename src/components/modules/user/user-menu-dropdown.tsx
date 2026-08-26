@@ -109,20 +109,6 @@ export function UserMenuDropdown({
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
 
-        {showUpgrade && !hasActiveSubscription && (
-          <>
-            <DropdownMenuGroup>
-              <DropdownMenuItem asChild>
-                <Link href={routes.pricing}>
-                  <Sparkles className="mr-2 size-4" />
-                  Upgrade to Pro
-                </Link>
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-          </>
-        )}
-
         <DropdownMenuGroup>
           {isAdmin && (
             <DropdownMenuItem asChild>
