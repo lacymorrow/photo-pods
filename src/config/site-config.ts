@@ -186,27 +186,28 @@ export const siteConfig: SiteConfig = {
     pageTransitions: true,
   },
 
-  name: "Shipkit",
-  title: "Shipkit",
-  tagline: "Launch your app at light speed.",
-  url: "https://shipkit.io",
+  name: "Photopods",
+  title: "Photopods",
+  tagline: "Share photos and videos with your people.",
+  url: "https://photo-pods.vercel.app",
   ogImage: "/app/og-image.png",
   description:
-    "Launch your app at light speed. Fast, flexible, and feature-packed for the modern web.",
+    "Create photo and video pods — private folders, invite-only groups, or public topic feeds. Drop media in, react with emoji, and share moments with your people.",
 
   branding: {
-    projectName: "Shipkit",
-    projectSlug: "shipkit",
+    projectName: "Photopods",
+    projectSlug: "photopods",
     productNames: {
-      bones: "Bones",
-      brains: "Brains",
-      main: "Shipkit",
+      bones: "Photopods",
+      brains: "Photopods",
+      main: "Photopods",
     },
-    domain: "shipkit.io",
-    protocol: "web+shipkit",
-    githubOrg: "shipkit-io",
-    githubRepo: "shipkit",
-    vercelProjectName: "shipkit-app",
+    domain: "photo-pods.vercel.app",
+    protocol: "web+photopods",
+    githubOrg: "lacymorrow",
+    githubRepo: "photo-pods",
+    vercelProjectName: "photo-pods",
+    // databaseName intentionally unchanged — used for schema naming
     databaseName: "shipkit",
   },
 
@@ -215,12 +216,12 @@ export const siteConfig: SiteConfig = {
     twitter_follow: "https://twitter.com/intent/follow?screen_name=lacybuilds",
     x: "https://x.com/lacybuilds",
     x_follow: "https://x.com/intent/follow?screen_name=lacybuilds",
-    github: "https://github.com/lacymorrow/shipkit",
+    github: "https://github.com/lacymorrow/photo-pods",
   },
 
   // Configure social profiles here. Leave any you don't use as empty strings.
   social: {
-    github: "https://github.com/shipkit-io",
+    github: "https://github.com/lacymorrow",
     x: "https://x.com/lacybuilds",
     linkedin: "",
     instagram: "",
@@ -234,8 +235,8 @@ export const siteConfig: SiteConfig = {
 
   repo: {
     owner: "lacymorrow",
-    name: "shipkit",
-    url: "https://github.com/lacymorrow/shipkit",
+    name: "photo-pods",
+    url: "https://github.com/lacymorrow/photo-pods",
     format: {
       // Placeholder format functions - assigned below
       clone: () => "",
@@ -282,13 +283,12 @@ export const siteConfig: SiteConfig = {
 
   metadata: {
     keywords: [
-      "Next.js",
-      "React",
-      "Tailwind CSS",
-      "Server Components",
-      "Shipkit",
-      "Shadcn",
-      "UI Components",
+      "photo sharing",
+      "video sharing",
+      "shared albums",
+      "photo pods",
+      "private photo groups",
+      "Photopods",
     ],
     themeColor: {
       light: "white",
@@ -297,8 +297,8 @@ export const siteConfig: SiteConfig = {
     locale: "en-US",
     generator: "Next.js", // Use Next.js as generator
     referrer: "origin-when-cross-origin",
-    category: "technology", // Use technology as category
-    classification: "Business Software",
+    category: "photography",
+    classification: "Photo & Video Sharing",
     openGraph: {
       imageWidth: 1200,
       imageHeight: 630,
@@ -344,7 +344,7 @@ export const siteConfig: SiteConfig = {
     display: "standalone",
     displayOverride: ["window-controls-overlay"],
     orientation: "portrait-primary",
-    categories: ["development", "productivity", "utilities"],
+    categories: ["photo", "social", "entertainment"],
     dir: "ltr",
     lang: "en-US",
     preferRelatedApplications: false,
@@ -363,7 +363,7 @@ export const siteConfig: SiteConfig = {
     adminIconPath: "./lib/payload/components/payload-icon",
     adminLogoPath: "./lib/payload/components/payload-logo",
     dbSchemaName: "payload",
-    emailFromName: "Payload CMS",
+    emailFromName: "Photopods",
   },
 
   app: {

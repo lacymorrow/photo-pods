@@ -86,9 +86,8 @@ export const clerkProtectedRoutes = [
  */
 export const clerkPublicRoutes = [
   routes.home,
-  routes.features,
-  routes.pricing,
-  routes.docs,
+  routes.pods.index,
+  routes.pods.discover,
   routes.blog,
   routes.contact,
   routes.auth.signIn,
@@ -96,5 +95,4 @@ export const clerkPublicRoutes = [
   routes.auth.forgotPassword,
   routes.auth.resetPassword,
   "/api/webhooks/clerk",
-  "/api/docs",
 ] as const;

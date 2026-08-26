@@ -44,22 +44,16 @@ const defaultGroups: FooterElement[] = [
       header: { label: "Product" },
       items: [
         { href: routes.home, label: "Home" },
-        { href: routes.features, label: "Features" },
-        { href: routes.pricing, label: "Pricing" },
-        { href: routes.external.bones, label: "Bones" },
+        { href: routes.pods.index, label: "My Pods" },
+        { href: routes.pods.discover, label: "Discover" },
       ],
     },
   },
   {
     type: "group",
     content: {
-      header: { label: "Resources", href: "#" },
+      header: { label: "Resources" },
       items: [
-        { href: routes.docs, label: "Documentation" },
-        // Only include blog link when blog is enabled
-        ...(process.env.NEXT_PUBLIC_HAS_BLOG === "true"
-          ? [{ href: routes.blog, label: "Blog" }]
-          : []),
         { href: routes.contact, label: "Support" },
         { href: routes.auth.signIn, label: "Sign in" },
       ],

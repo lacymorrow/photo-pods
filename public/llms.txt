@@ -1,28 +1,15 @@
-# ShipKit
+# Photopods
 
-> Next.js starter kit with auth, CMS, payments, and everything apps need to ship fast.
+> Share photos and videos in pods — private folders, invite-only groups, or fully public topic feeds. React with emoji, invite your people, keep your moments together.
 
-## What is ShipKit?
-ShipKit is a production-ready Next.js 15 starter template. Clone it, configure it, deploy to Vercel. Auth, payments, CMS, email, AI, analytics, database, storage, all pre-wired.
+## What is Photopods?
+Photopods is a photo and video sharing app built around "pods". A pod can be private (just you), shared (invite-only for friends and family), or public (a topic feed anyone can browse). Drop photos and videos in, react with emoji, and share moments with the people who matter.
 
-## Quick Start
-git clone https://github.com/shipkit-io/shipkit
-cd shipkit
-bun install --frozen-lockfile
-bun dev
+## Key pages
+- / — your pods (sign in to create and view)
+- /pods/discover — browse public pods
+- /pods/new — create a pod
+- /contact — support
 
-## Deploy
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fshipkit-io%2Fshipkit)
-
-No environment variables needed to start. The setup wizard guides you through configuration after deployment.
-
-## Docs
-- Full Documentation: https://shipkit.io/docs
-- Deploy Guide: https://shipkit.io/docs/getting-started/deploy
-- Development Guide: https://shipkit.io/docs/development
-
-## Links
-- Website: https://shipkit.io
-- GitHub: https://github.com/shipkit-io/shipkit
-- Free Template: https://github.com/shipkit-io/bones
-- Twitter: https://twitter.com/lacybuilds
+## Contact
+https://photo-pods.vercel.app/contact

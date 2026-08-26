@@ -55,35 +55,35 @@ export function CommandMenu() {
           <CommandGroup heading="Links">
             <CommandItem
               onSelect={() => {
-                router.push(routes.docs);
+                router.push(routes.pods.index);
                 setOpen(false);
               }}
             >
-              Documentation
+              My Pods
             </CommandItem>
             <CommandItem
               onSelect={() => {
-                router.push(`${routes.docs}/components/accordion`);
+                router.push(routes.pods.discover);
                 setOpen(false);
               }}
             >
-              Components
+              Discover
             </CommandItem>
             <CommandItem
               onSelect={() => {
-                router.push(`${routes.docs}/themes`);
+                router.push(routes.pods.new);
                 setOpen(false);
               }}
             >
-              Themes
+              New Pod
             </CommandItem>
             <CommandItem
               onSelect={() => {
-                router.push(`${routes.docs}/examples`);
+                router.push(routes.contact);
                 setOpen(false);
               }}
             >
-              Examples
+              Support
             </CommandItem>
           </CommandGroup>
         </CommandList>

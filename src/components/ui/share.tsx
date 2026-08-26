@@ -25,7 +25,7 @@ export const Share = ({
   title = "Check this out!",
   description = "I thought you might find this interesting",
   hashtags = [],
-  via = "shipkit",
+  via = "photopods",
   className,
 }: ShareProps) => {
   const { toast } = useToast();

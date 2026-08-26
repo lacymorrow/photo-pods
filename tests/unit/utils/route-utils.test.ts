@@ -81,7 +81,7 @@ describe("route-utils", () => {
     // Assuming the routes object from src/config/routes.ts is implicitly used
     it("should resolve a simple top-level route string", () => {
       expect(rx("home")).toBe("/");
-      expect(rx("pricing")).toBe("/pricing");
+      expect(rx("contact")).toBe("/contact");
     });
 
     it("should resolve a nested route string", () => {
@@ -118,7 +118,7 @@ describe("route-utils", () => {
     });
 
     it.skip("should handle deeply nested paths", () => {
-      expect(rx("examples.forms.notifications")).toBe("/examples/forms/notifications");
+      expect(rx("api.github.checkInvitation")).toBe("/api/github/check-invitation");
     });
   });
 

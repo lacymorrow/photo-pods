@@ -1,4 +1,3 @@
-import { DownloadIcon } from "lucide-react";
 import type { Metadata } from "next";
 import { LoginButton } from "@/components/buttons/sign-in-button";
 import { Link } from "@/components/primitives/link";
@@ -11,7 +10,6 @@ import { constructMetadata } from "@/config/metadata";
 import { routes } from "@/config/routes";
 import { siteConfig } from "@/config/site-config";
 import { logger } from "@/lib/logger";
-import { cn } from "@/lib/utils";
 import { auth } from "@/server/auth";
 import { PaymentService } from "@/server/services/payment-service";
 
@@ -61,7 +59,6 @@ export default async function CheckoutSuccessPage({
   const requestId = crypto.randomUUID();
   let customData: CustomData = {};
   let accessGranted = false;
-  let canDownload = false;
   let paymentProcessor = "unknown";
   let orderId = "";
   let email = "";
@@ -107,16 +104,6 @@ export default async function CheckoutSuccessPage({
           });
         }
       }
-
-      // Check if download is possible for Lemon Squeezy
-      if (orderId && email && status === "paid") {
-        canDownload = true;
-        logger.info("Download enabled for Lemon Squeezy purchase", {
-          requestId,
-          orderId,
-          email,
-        });
-      }
     } else if (searchParams.checkoutId) {
       // Polar checkout
       paymentProcessor = "polar";
@@ -130,23 +117,14 @@ export default async function CheckoutSuccessPage({
         checkoutId: orderId,
         customer_session_token: searchParams.customer_session_token,
       });
-
-      // Enable download if user is logged in (since we have their email)
-      if (orderId && session?.user?.email) {
-        canDownload = true;
-        logger.info("Download enabled for Polar purchase", {
-          requestId,
-          orderId,
-          email: session.user.email,
-        });
-      }
     }
 
     // Grant access if possible (works for both payment processors)
-    if (orderId && (session?.user?.id || customData.user_id)) {
+    const paymentUserId = session?.user?.id ?? customData.user_id;
+    if (orderId && paymentUserId) {
       try {
         await PaymentService.createPayment({
-          userId: session?.user?.id || customData.user_id!,
+          userId: paymentUserId,
           orderId: orderId,
           status: status,
           amount: 0,
@@ -227,26 +205,10 @@ export default async function CheckoutSuccessPage({
             <LoginButton />
           )}
 
-          {canDownload && email && (
-            <div className="mt-20 text-center">
-              <h3 className="mb-4 text-lg font-semibold">Just want the code?</h3>
-              {/* Download button - direct link with email param */}
-              <Button variant="outline" size="lg" className={cn("w-full")} asChild>
-                <Link href={`${routes.api.download}?email=${encodeURIComponent(email)}`}>
-                  <DownloadIcon className="mr-2 h-4 w-4" />
-                  Download {siteConfig.title}
-                </Link>
-              </Button>
-            </div>
-          )}
-
           {/* Additional resources */}
           <div className="mt-20 text-center">
             <h3 className="mb-4 text-lg font-semibold">Need Help Getting Started?</h3>
             <div className="flex flex-wrap justify-center gap-4">
-              <Button variant="outline" asChild>
-                <Link href={routes.docs}>View Documentation</Link>
-              </Button>
               <Button variant="outline" asChild>
                 <Link href={routes.contact}>Contact Support</Link>
               </Button>

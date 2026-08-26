@@ -6,7 +6,6 @@ const navLinks = [
   { href: routes.home, label: "Home" },
   { href: routes.privacy, label: "Privacy" },
   { href: routes.terms, label: "Terms" },
-  { href: routes.eula, label: "EULA" },
   { href: routes.legal, label: "Legal" },
 ];
 
