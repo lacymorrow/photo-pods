@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DeploymentActions } from "@/app/(app)/(dashboard)/deployments/deployment-actions";
+import { DeploymentActions } from "@/app/(app)/(dashboard)/deployments/deployment-actions-menu";
 import { deleteDeployment } from "@/server/actions/deployment-actions";
 import type { Deployment } from "@/server/db/schema";
 
