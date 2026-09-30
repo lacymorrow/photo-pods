@@ -27,21 +27,16 @@ export default async function DashboardPage() {
       <StatsCards />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        <Card className="col-span-4">
-          <CardHeader>
-            <CardTitle>Revenue Overview</CardTitle>
-            <CardDescription>Monthly revenue and expenses for the current year</CardDescription>
+        {/* RevenueChart carries its own card. */}
+        <div className="col-span-4">
+          <RevenueChart />
+        </div>
+        <Card className="col-span-3 gap-0 py-0">
+          <CardHeader className="p-6 pb-4">
+            <CardTitle className="text-sm">Recent sales</CardTitle>
+            <CardDescription className="text-xs">265 this month</CardDescription>
           </CardHeader>
-          <CardContent className="pl-2">
-            <RevenueChart />
-          </CardContent>
-        </Card>
-        <Card className="col-span-3">
-          <CardHeader>
-            <CardTitle>Recent Sales</CardTitle>
-            <CardDescription>You made 265 sales this month.</CardDescription>
-          </CardHeader>
-          <CardContent>
+          <CardContent className="p-6 pt-0">
             <RecentSales />
           </CardContent>
         </Card>

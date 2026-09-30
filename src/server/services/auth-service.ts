@@ -7,7 +7,7 @@ import { STATUS_CODES } from "@/config/status-codes";
 // This service can be imported by Node scripts; avoid importing "server-only" here
 import { env } from "@/env";
 import { logger } from "@/lib/logger";
-import { getPayloadClient, payload } from "@/lib/payload/payload";
+import { getPayloadClient } from "@/lib/payload/payload";
 import { signInSchema } from "@/lib/schemas/auth";
 import { signIn, signOut } from "@/server/auth";
 import { db } from "@/server/db";
@@ -51,7 +51,7 @@ const scrypt = promisify<string | Buffer, Buffer, number, crypto.ScryptOptions, 
  * @param password The plain text password to hash
  * @returns A string containing the salt and hash, separated by a colon
  */
-async function hashPassword(password: string): Promise<string> {
+async function _hashPassword(password: string): Promise<string> {
   const salt = crypto.randomBytes(SALT_LENGTH);
   const derivedKey = await scrypt(password, salt, KEY_LENGTH, SCRYPT_OPTIONS);
   return `${salt.toString("hex")}:${derivedKey.toString("hex")}`;
@@ -63,7 +63,7 @@ async function hashPassword(password: string): Promise<string> {
  * @param hash The hash to verify against (in format salt:hash)
  * @returns True if the password matches, false otherwise
  */
-async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
+async function _verifyPassword(password: string, storedHash: string): Promise<boolean> {
   try {
     const parts = storedHash.split(":");
     if (parts.length !== 2) return false;
@@ -124,7 +124,7 @@ export const AuthService = {
             collection: "users",
             id,
           })) as unknown as PayloadUser;
-        } catch (error) {
+        } catch (_error) {
           // User doesn't exist in Payload CMS
           logger.debug(`User ${id} not found in Payload CMS, will create`);
         }
@@ -158,7 +158,7 @@ export const AuthService = {
       await userService.ensureUserExists({
         id,
         email,
-        name: name || email,
+        name: name ?? email,
         image,
       });
       // logger.info(`Ensured user ${id} exists in Shipkit database`);
@@ -189,7 +189,7 @@ export const AuthService = {
             id: userId,
           });
           logger.debug(`Cleaned up user ${userId} from Payload CMS`);
-        } catch (error) {
+        } catch (_error) {
           // Ignore if user doesn't exist
           logger.debug(`User ${userId} not found in Payload CMS during cleanup`);
         }
@@ -384,19 +384,17 @@ export const AuthService = {
       })) as any;
 
       if (!result || result.ok === false) {
-        return { ok: false, error: result?.error || STATUS_CODES.CREDENTIALS.message };
+        return { ok: false, error: result?.error ?? STATUS_CODES.CREDENTIALS.message };
       }
 
       return { ok: true, url: result.url ?? redirectTo };
     } catch (error) {
       // Only log unexpected errors; credential/auth errors are already logged at origin
-      if (
-        !(
-          error instanceof Error &&
-          (error.message === STATUS_CODES.CREDENTIALS.message ||
-            error.message === STATUS_CODES.AUTH_ERROR.message)
-        )
-      ) {
+      if (!(
+        error instanceof Error &&
+        (error.message === STATUS_CODES.CREDENTIALS.message ||
+          error.message === STATUS_CODES.AUTH_ERROR.message)
+      )) {
         logger.error("Error in signInWithCredentials:", error);
       }
       throw error;
@@ -419,6 +417,7 @@ export const AuthService = {
     redirectTo?: string;
   }) {
     try {
+      const payload = await getPayloadClient();
       if (!payload) {
         logger.error("Payload CMS is not initialized");
         throw new Error("Authentication service unavailable");
@@ -491,7 +490,7 @@ export const AuthService = {
       })) as any;
 
       if (!result || result.ok === false) {
-        return { ok: false, error: result?.error || "Sign-up failed" };
+        return { ok: false, error: result?.error ?? "Sign-up failed" };
       }
 
       return { ok: true, user: newUser };
@@ -557,6 +556,7 @@ export const AuthService = {
   async forgotPassword(email: string): Promise<{ ok: true }> {
     try {
       // Validate email exists in Payload CMS first
+      const payload = await getPayloadClient();
       if (!payload) {
         logger.error("Payload CMS is not initialized");
         throw new Error("Authentication service unavailable");
@@ -602,6 +602,7 @@ export const AuthService = {
    */
   async resetPassword(token: string, password: string): Promise<{ ok: true }> {
     try {
+      const payload = await getPayloadClient();
       if (!payload) {
         logger.error("Payload CMS is not initialized");
         throw new Error("Authentication service unavailable");
@@ -651,6 +652,7 @@ export const AuthService = {
       const { email, password } = parsedCredentials.data;
 
       // Use Payload CMS for authentication
+      const payload = await getPayloadClient();
       if (!payload) {
         logger.error("Payload CMS is not initialized");
         throw new Error(STATUS_CODES.AUTH_ERROR.message);
@@ -708,7 +710,7 @@ export const AuthService = {
 
           // logger.info("User authenticated successfully:", user.id);
           return user;
-        } catch (loginError) {
+        } catch (_loginError) {
           throw new Error(STATUS_CODES.CREDENTIALS.message);
         }
       } catch (error) {
@@ -927,7 +929,7 @@ export const AuthService = {
       await userService.ensureUserExists({
         id: userId,
         email: userData.email,
-        name: userData.name || userData.email,
+        name: userData.name ?? userData.email,
         image: null,
       });
 

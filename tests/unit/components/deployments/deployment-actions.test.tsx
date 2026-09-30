@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DeploymentActions } from "@/app/(app)/(dashboard)/deployments/deployment-actions";
+import { DeploymentActions } from "@/app/(app)/(dashboard)/deployments/deployment-actions-menu";
 import { deleteDeployment } from "@/server/actions/deployment-actions";
 import type { Deployment } from "@/server/db/schema";
 
@@ -25,6 +25,10 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
+// SKIPPED: tests reference data-testids ("deployment-actions-delete", etc.) that
+// no longer exist on the refactored DeploymentActions component. Tests need to
+// be rewritten against the current component API. Tracked under plans/MASTER-TEST-PLAN.md
+// Phase 4 (deployment-actions characterization).
 describe.skip("DeploymentActions", () => {
   const mockDeployment: Deployment = {
     id: "test-id",

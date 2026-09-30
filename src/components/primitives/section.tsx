@@ -28,8 +28,7 @@ const sectionStyles = cva(
 );
 
 export interface SectionProps
-  extends React.HTMLAttributes<HTMLElement>,
-    VariantProps<typeof sectionStyles> {
+  extends React.HTMLAttributes<HTMLElement>, VariantProps<typeof sectionStyles> {
   children: React.ReactNode;
 }
 
@@ -54,7 +53,7 @@ export const SectionBadge = ({
 }) => (
   <Badge
     variant="secondary"
-    className={cn("rounded-full px-4 py-1 text-sm inline-flex gap-2", className)}
+    className={cn("inline-flex gap-2 rounded-full px-4 py-1 text-sm", className)}
   >
     {children}
   </Badge>
@@ -69,7 +68,7 @@ export const SectionHeader = ({
 }) => (
   <h3
     className={cn(
-      "font-heading text-balance text-center text-3xl font-semibold tracking-tight sm:text-4xl",
+      "font-heading text-center text-3xl font-semibold tracking-tight text-balance sm:text-4xl",
       className
     )}
   >

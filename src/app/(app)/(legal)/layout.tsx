@@ -13,7 +13,7 @@ interface DocsLayoutProps {
   children: ReactNode;
 }
 
-export default async function DocsLayout({ children }: DocsLayoutProps) {
+export default function DocsLayout({ children }: DocsLayoutProps) {
   return (
     <>
       <Header navLinks={navLinks} />

@@ -17,7 +17,7 @@ const getDefaultTitleString = (title: Metadata["title"]): string | undefined => 
 const defaultOpenGraph: OpenGraph = {
   type: "website",
   locale: siteConfig.metadata.locale,
-  url: siteConfig.url,
+  url: "./",
   title: siteConfig.title,
   description: siteConfig.description,
   siteName: siteConfig.title,
@@ -149,11 +149,12 @@ export const constructMetadata = ({
     ...metadata,
     openGraph: {
       ...defaultOpenGraph,
+      ...(metadata.openGraph ?? {}),
       // Assign the extracted title string or fallback
       title: metaTitleString ?? defaultMetaTitleString,
       // Ensure description is not null
       description: metadata.description ?? defaultMetadata.description ?? undefined,
-      images: images.length > 0 ? images : defaultOpenGraph.images,
+      images: images.length > 0 ? images : (metadata.openGraph?.images ?? defaultOpenGraph.images),
     },
     twitter: {
       ...defaultTwitter,
@@ -172,5 +173,9 @@ export const routeMetadata = {
   home: {
     title: `${siteConfig.title} - ${siteConfig.tagline}`,
     description: siteConfig.description,
+  },
+  faq: {
+    title: `FAQ - Frequently Asked Questions | ${siteConfig.title}`,
+    description: `Common questions about ${siteConfig.title} — features, pricing, setup, and what to expect.`,
   },
 };

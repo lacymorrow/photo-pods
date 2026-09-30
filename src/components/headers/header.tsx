@@ -3,7 +3,7 @@
 import { HamburgerMenuIcon } from "@radix-ui/react-icons";
 import { useWindowScroll } from "@uidotdev/usehooks";
 import { cva } from "class-variance-authority";
-import { useSession } from "next-auth/react";
+import { useSession } from "@/lib/auth/use-session";
 import type React from "react";
 
 import { Icon } from "@/components/assets/icon";
@@ -12,11 +12,11 @@ import { SearchMenu } from "@/components/modules/search/search-menu";
 import { UserMenu } from "@/components/modules/user/user-menu";
 import { Link } from "@/components/primitives/link";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { PriorityNav } from "@/components/ui/priority-nav";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ThemeToggle } from "@/components/ui/shipkit/theme";
 import type { NavLink } from "@/config/navigation";
 import { defaultNavLinks as navigationDefaultNavLinks } from "@/config/navigation";
-import { PriorityNav } from "@/components/ui/priority-nav";
 import { routes } from "@/config/routes";
 import { siteConfig } from "@/config/site-config";
 import { useSignInRedirectUrl } from "@/hooks/use-auth-redirect";
@@ -54,9 +54,9 @@ const headerVariants = cva("translate-z-0 z-50 p-md", {
   variants: {
     variant: {
       default: "relative",
-      floating: "sticky top-0 h-24",
+      floating: "fixed top-0 h-24 w-full",
       sticky:
-        "sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60",
+        "sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur-sm supports-backdrop-filter:bg-background/60",
       "logo-only": "relative",
       minimal: "relative",
     },
@@ -98,7 +98,7 @@ export const Header: React.FC<HeaderProps> = ({
     return (
       <header className={cn(headerVariants({ variant: "minimal" }), className)}>
         <nav className="container flex items-center justify-between gap-md">
-          <div className="flex items-center gap-2 md:gap-4 shrink-0">
+          <div className="flex shrink-0 items-center gap-2 md:gap-4">
             <Link
               href={logoHref}
               className="flex items-center gap-2 text-lg font-semibold md:mr-6 md:text-base"
@@ -133,8 +133,8 @@ export const Header: React.FC<HeaderProps> = ({
         variant === "floating" && styles.header,
         variant === "floating" && isOpaque && styles.opaque,
         variant === "floating" &&
-        isOpaque &&
-        "-top-[12px] [--header-background:#fafafc70] dark:[--header-background:#1c1c2270]",
+          isOpaque &&
+          "top-[-12px] [--header-background:#fafafc70] dark:[--header-background:#1c1c2270]",
         className
       )}
     >
@@ -150,7 +150,7 @@ export const Header: React.FC<HeaderProps> = ({
         <div
           className={cn(
             "flex items-center gap-2 md:gap-4",
-            isLogoOnly ? "justify-center shrink-0" : "justify-start min-w-0 flex-1"
+            isLogoOnly ? "shrink-0 justify-center" : "min-w-0 flex-1 justify-start"
           )}
         >
           {!isLogoOnly && (
@@ -221,13 +221,13 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="block whitespace-nowrap">{logoText}</span>
           </Link>
 
-          <div className="hidden md:flex min-w-0 flex-1">
+          <div className="hidden min-w-0 flex-1 md:flex">
             <PriorityNav navLinks={navLinks} />
           </div>
         </div>
 
         {!isLogoOnly && (
-          <div className="flex items-center gap-2 lg:gap-4 shrink-0">
+          <div className="flex shrink-0 items-center gap-2 lg:gap-4">
             {/* Search */}
             {searchVariant === "menu" && (
               <SearchMenu

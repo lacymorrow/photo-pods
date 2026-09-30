@@ -44,8 +44,7 @@ const builtByVariants = cva(
 );
 
 export interface AttributionProps
-  extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof builtByVariants> {
+  extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof builtByVariants> {
   heading?: React.ReactNode;
   description?: React.ReactNode;
   onClose?: () => void;
@@ -144,7 +143,7 @@ export function Attribution({
               </Button>
             )}
             {children}
-            <button onClick={handleClose} type="button" className="absolute right-1.5 top-1.5">
+            <button onClick={handleClose} type="button" className="absolute top-1.5 right-1.5">
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -187,7 +186,7 @@ export function Attribution({
             </CardFooter>
           )}
 
-          <button onClick={handleClose} type="button" className="absolute right-1.5 top-1.5">
+          <button onClick={handleClose} type="button" className="absolute top-1.5 right-1.5">
             <X className="size-3" />
           </button>
         </Card>

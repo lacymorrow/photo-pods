@@ -2,7 +2,7 @@ export const content = [
   {
     question: "What do I actually get?",
     answer:
-      "A full Next.js 15 codebase. Auth (Auth.js v5), database (Postgres + Drizzle), payments (LemonSqueezy), CMS (Payload), email (Resend), 100+ UI components (shadcn/ui), AI integrations, and deployment configs. You clone the repo and own the code forever.",
+      "A full Next.js 16 codebase. Auth (Better Auth + OAuth), database (Postgres + Drizzle), payments (LemonSqueezy), CMS (Payload), email (Resend), 100+ UI components (shadcn/ui), AI integrations, and deployment configs. You clone the repo and own the code forever.",
     category: "general",
   },
   {
@@ -12,8 +12,7 @@ export const content = [
     category: "general",
   },
   {
-    question:
-      "I use Cursor, v0, or Windsurf. Does this work with AI coding tools?",
+    question: "I use Cursor, v0, or Windsurf. Does this work with AI coding tools?",
     answer:
       "Yes. Shipkit ships with Cursor rules, prompts, and project context files so AI tools understand the codebase from the start. Built for the AI-assisted workflow.",
     category: "technical",
@@ -33,7 +32,7 @@ export const content = [
   {
     question: "Is there a free version?",
     answer:
-      "Shipkit Bones is free and open source. Core Next.js setup with auth and basic components. The paid version adds the database, payments, CMS, AI, and premium components.",
+      "Yes — Shipkit Bones is free and open source on GitHub (github.com/shipkit-io/bones). It's the core Next.js setup with auth and basic components. The paid version adds the full stack: database, payments, CMS, AI, and 100+ premium components.",
     category: "pricing",
   },
   {

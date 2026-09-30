@@ -1,5 +1,7 @@
 /* ! Shadcn UI Default Styles - Uncomment to use */
 @import "./theme.css";
+@import "./overrides.css";
+@import "./components/sidebar-icons.css";
 
 /* ! Shadcn UI Default Styles - Uncomment to use */
 /* @import "./shadcn-ui-default.css"; */
@@ -11,6 +13,10 @@ html {
 body {
 	text-rendering: optimizeLegibility;
 	-webkit-font-smoothing: antialiased;
+}
+
+a[href^="tel:"] {
+	white-space: nowrap;
 }
 
 /* ! Custom text highlight styles */
@@ -56,4 +62,24 @@ body {
 
 .dark .animate-connection-highlight {
 	animation: connectionHighlightDark 3s ease-in-out !important;
+}
+
+/* Resume print styles */
+@media print {
+	/* Hide everything except resume content */
+	header, footer, nav, aside,
+	[data-print-hide],
+	.lg\:block { display: none !important; }
+
+	/* Remove dimmed entries from print */
+	[data-match="false"] { display: none !important; }
+
+	/* Reset print layout */
+	#resume-content {
+		max-width: 100% !important;
+		padding: 0 !important;
+		margin: 0 !important;
+	}
+
+	body { background: white !important; }
 }
