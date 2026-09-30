@@ -9,11 +9,15 @@ node_modules
 
 # testing
 /testing-results
+/test-results
 /coverage
 
 # next.js
 /.next/
 /out/
+
+# generated content manifests (created by scripts/prebuild-content.mjs)
+src/lib/generated/
 
 # production
 /build
@@ -30,6 +34,13 @@ yarn-debug.log*
 env
 *.env*
 !.env.example
+
+# Secret-scan hygiene (LAC-3163)
+# .specstory persists chat transcripts that captured live tokens in past commits.
+.specstory/
+# repomix outputs bundle repo contents and have leaked secrets historically.
+.repomix-output.*
+repomix-output.*
 
 # typescript
 *.tsbuildinfo
@@ -97,3 +108,14 @@ tests/e2e/fixtures/video-*mb.mp4
 tests/e2e/fixtures/batch-*/
 # Seeded manifest is environment-specific and contains real user IDs.
 tests/e2e/fixtures/qa.json
+
+# From bones sync
+.idea/
+env/
+logs
+
+# fumadocs-mdx generated collections
+.source
+
+# mirrored from docs/images by scripts/sync-docs-images.mjs
+public/docs

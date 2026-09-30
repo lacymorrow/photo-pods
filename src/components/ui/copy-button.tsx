@@ -2,11 +2,11 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, Copy } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { haptic } from "@/hooks/use-haptics";
-import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 interface CopyButtonProps {
@@ -25,13 +25,11 @@ export const CopyButton = ({
   successDescription = "Copied to clipboard",
   ...props
 }: CopyButtonProps) => {
-  const { toast } = useToast();
   const { isCopied, copyToClipboard } = useCopyToClipboard({
     timeout: 2000,
     onCopy: () => {
       haptic("success");
-      toast({
-        title: successTitle,
+      toast.success(successTitle, {
         description: successDescription,
       });
     },
@@ -45,7 +43,7 @@ export const CopyButton = ({
           size="icon"
           onClick={() => copyToClipboard(value)}
           {...props}
-          className={cn("h-8 w-8 relative", className)}
+          className={cn("relative h-8 w-8", className)}
         >
           <AnimatePresence mode="wait">
             <motion.div

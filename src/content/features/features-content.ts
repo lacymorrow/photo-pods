@@ -7,7 +7,7 @@ export const content: FeatureContent[] = [
   {
     name: "10x Faster Development",
     description:
-      "Ship in days, not months with our pre-built Next.js 15 stack. Zero runtime errors with end-to-end type safety and instant hot reload.",
+      "Ship in days, not months with our pre-built Next.js 16 stack. Zero runtime errors with end-to-end type safety and instant hot reload.",
     category: "core",
     plans: ["bones", "brains"],
     icon: "Zap",
@@ -15,7 +15,7 @@ export const content: FeatureContent[] = [
   {
     name: "Future-Proof Architecture",
     description:
-      "Built with Next.js 15, TypeScript, Tailwind CSS, and Shadcn/UI - the same stack used by industry leaders. Never worry about tech debt again.",
+      "Built with Next.js 16, TypeScript, Tailwind CSS, and Shadcn/UI - the same stack used by industry leaders. Never worry about tech debt again.",
     category: "core",
     plans: ["bones", "brains"],
     icon: "Layers",

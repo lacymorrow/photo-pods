@@ -6,7 +6,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Send,
-  Settings2,
+  Settings,
 } from "lucide-react";
 import type React from "react";
 import { FeedbackDialog } from "@/components/forms/feedback-dialog";
@@ -21,6 +21,7 @@ const data = [
   {
     title: "Feedback",
     Icon: Send,
+    iconName: "send",
     href: "#feedback",
     component: FeedbackDialog,
   },
@@ -31,7 +32,8 @@ const data = [
   },
   {
     title: "Settings",
-    Icon: Settings2,
+    Icon: Settings,
+    iconName: "gear",
     href: routes.settings.index,
   },
 ];
@@ -40,6 +42,8 @@ interface NavSecondaryItem {
   title: string;
   href: string;
   Icon: LucideIcon;
+  /** Picks the icon's hover move in sidebar-icons.css. */
+  iconName?: string;
   component?: React.ComponentType<{ trigger?: React.ReactNode }>;
 }
 
@@ -98,8 +102,9 @@ export function NavSecondary({ items, className }: NavSecondaryProps) {
                   <Button
                     {...buttonProps}
                     className="w-full justify-start group-data-[collapsible=icon]:px-2"
+                    data-icon-host
                   >
-                    <Icon className="h-4 w-4 shrink-0" />
+                    <Icon className="h-4 w-4 shrink-0" data-icon={item.iconName} />
                     {open && (
                       <span className="ml-2 transition-all duration-200 group-data-[collapsible=icon]:opacity-0">
                         {item.title}
@@ -123,8 +128,9 @@ export function NavSecondary({ items, className }: NavSecondaryProps) {
                 "group justify-center",
                 open && "w-full justify-start"
               )}
+              data-icon-host
             >
-              <Icon className="h-4 w-4 shrink-0" />
+              <Icon className="h-4 w-4 shrink-0" data-icon={item.iconName} />
               {open && (
                 <span className="ml-2 transition-all duration-200 group-data-[collapsible=icon]:opacity-0">
                   {item.title}

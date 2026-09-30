@@ -1,4 +1,8 @@
+import path from "node:path";
+import { createMDX } from "fumadocs-mdx/next";
 import type { NextConfig } from "next";
+import { buildInfo } from "@/config/build-info";
+import { holocronUrl, isHolocronProvider } from "@/config/docs-provider";
 import {
   buildTimeFeatureFlags,
   buildTimeFeatures,
@@ -41,7 +45,10 @@ const nextConfig: NextConfig = {
     // unless prefixed with NEXT_PUBLIC_. Consumers should read via process.env on server.
     ...getDerivedSecrets(),
 
-    // You can add other build-time env variables here if needed
+    // Build version info — baked in at build time, available via /api/version
+    NEXT_PUBLIC_BUILD_VERSION: buildInfo.version,
+    NEXT_PUBLIC_BUILD_COMMIT: buildInfo.commit,
+    NEXT_PUBLIC_BUILD_TIME: buildInfo.buildTime,
   },
 
   /*
@@ -71,7 +78,7 @@ const nextConfig: NextConfig = {
       },
     ],
     /*
-     * Next.js 15+ Enhanced Image Optimization
+     * Enhanced Image Optimization
      * Optimized for Core Web Vitals and performance
      */
     formats: ["image/avif", "image/webp"],
@@ -91,6 +98,19 @@ const nextConfig: NextConfig = {
    */
   rewrites() {
     return Promise.resolve([
+      /*
+       * Docs provider: "holocron".
+       * Holocron is a standalone Vite/RSC app with no static-export mode, so it
+       * cannot be embedded in a Next.js route. When selected, proxy /docs to the
+       * running Holocron server instead of rendering the in-app fumadocs route.
+       * See src/config/docs-provider.ts.
+       */
+      ...(isHolocronProvider
+        ? [
+            { source: "/docs", destination: holocronUrl },
+            { source: "/docs/:path*", destination: `${holocronUrl}/:path*` },
+          ]
+        : []),
       {
         source: `/${POSTHOG_RELAY_SLUG}/static/:path*`,
         destination: "https://us-assets.i.posthog.com/static/:path*",
@@ -102,6 +122,12 @@ const nextConfig: NextConfig = {
       {
         source: `/${POSTHOG_RELAY_SLUG}/flags`,
         destination: "https://us.i.posthog.com/flags",
+      },
+      // .well-known/* routes live under src/app/wellknown/* because TS/ESLint
+      // can't traverse dot-directories for type-aware linting.
+      {
+        source: "/.well-known/:path*",
+        destination: "/wellknown/:path*",
       },
     ]);
   },
@@ -132,6 +158,10 @@ const nextConfig: NextConfig = {
         source: "/(.*)",
         headers: [
           {
+            key: "X-Powered-By",
+            value: "shipkit.io",
+          },
+          {
             key: "X-Frame-Options",
             value: "DENY",
           },
@@ -159,7 +189,7 @@ const nextConfig: NextConfig = {
 
   // Production optimizations
   compress: true,
-  poweredByHeader: false,
+  poweredByHeader: false, // Disable default "Next.js" — custom "shipkit.io" header set in headers()
 
   /*
    * React configuration
@@ -209,10 +239,15 @@ const nextConfig: NextConfig = {
     "mysql2",
     // ESM-only packages that need to be externalized
     "@octokit/rest",
+    // evlog reads node:fs/node:module. src/instrumentation.ts imports it at
+    // runtime behind webpackIgnore/turbopackIgnore; this keeps output tracing
+    // shipping the package instead of trying to bundle it.
+    "evlog",
   ],
 
-  // Enable React Compiler for useMemoCache runtime support
-  // Required for dependencies like lucide-react and @payloadcms/ui that use the compiler
+  // Compile this app's components with the React Compiler (auto-memoization).
+  // Deps that ship pre-compiled output (e.g. @payloadcms/ui) don't need this flag;
+  // they use react/compiler-runtime, provided by React 19 itself.
   reactCompiler: true,
 
   /*
@@ -231,8 +266,6 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: FILE_UPLOAD_MAX_SIZE,
     },
-    // @see: https://nextjs.org/docs/app/api-reference/next-config-js/viewTransition
-    viewTransition: true,
     webVitalsAttribution: ["CLS", "LCP", "TTFB", "FCP", "FID"],
 
     // Optimized prefetching
@@ -264,9 +297,24 @@ const nextConfig: NextConfig = {
       static: 360, // 360 seconds for static routes
     },
 
-    // Memory optimization for builds - Uncomment if experiencing memory issues
+    /*
+     * Reduce peak webpack memory during builds. Vercel's standard build
+     * container has 8GB total; without this the build is SIGKILLed by the
+     * container OOM killer (see build:vercel heap cap in package.json).
+     */
+    webpackMemoryOptimizations: true,
+
+    /*
+     * "Collecting page data" spawns one worker per CPU minus one (3 on Vercel's
+     * 4-core/8GB box), and each worker loads the whole route graph, Payload
+     * and Drizzle included. Three of them plus the main process exceed 8GB and
+     * the container OOM-kills the build (LAC-3871): cold builds of an
+     * unmodified main failed the same way. One worker fits. Static generation
+     * takes a little longer; a build that finishes beats one that does not.
+     */
+    cpus: 1,
+
     // webpackBuildWorker: false, // Disable for low memory
-    // cpus: 1, // Limit concurrent operations
     // workerThreads: false, // Disable worker threads
     // ppr: true,
   },
@@ -330,7 +378,7 @@ const nextConfig: NextConfig = {
       "**/node_modules/three/**",
       "**/node_modules/@react-three/**",
       "**/node_modules/jspdf/**",
-      // Additional Next.js 15 optimizations
+      // Additional watcher exclusions for heavy dependencies
       "**/node_modules/monaco-editor/**",
       "**/node_modules/@playwright/**",
       "**/node_modules/typescript/lib/**",
@@ -380,4 +428,57 @@ const nextConfig: NextConfig = {
  * The utility handles loading and applying functions exported from files
  * in the specified directory (default: src/config/nextjs).
  */
-export default withPlugins(nextConfig);
+/*
+ * Generates the fumadocs collections into `.source` (the fumadocs-mdx default,
+ * which its CLI also uses). Resolved in app code via the "@/.source/*" tsconfig path.
+ */
+const withMDX = createMDX();
+
+const DOCS_DIR = path.join(process.cwd(), "docs");
+
+/*
+ * Confine the fumadocs MDX loader to /docs.
+ *
+ * Two MDX pipelines coexist: fumadocs owns the documentation, @next/mdx owns
+ * app-level .mdx routes such as src/app/(app)/(legal)/*\/page.mdx. Both register
+ * a rule matching /\.mdx?$/, so without this the loaders chain and app routes
+ * fail with "Unexpected FunctionDeclaration ... only import/exports are supported".
+ * The mirrored guard lives in src/config/nextjs/with-mdx.ts.
+ */
+interface WebpackRuleLike {
+  use?: unknown;
+  include?: unknown;
+}
+
+interface WebpackConfigLike {
+  module?: { rules?: unknown[] };
+}
+
+function scopeFumadocsToDocsDir(config: NextConfig): NextConfig {
+  const previousWebpack = config.webpack;
+
+  config.webpack = (webpackConfig, options) => {
+    const result = (
+      previousWebpack ? previousWebpack(webpackConfig, options) : webpackConfig
+    ) as WebpackConfigLike;
+
+    for (const entry of result.module?.rules ?? []) {
+      if (!entry || typeof entry !== "object") continue;
+      const rule = entry as WebpackRuleLike;
+
+      const uses: unknown[] = Array.isArray(rule.use) ? rule.use : rule.use ? [rule.use] : [];
+      const isFumadocsRule = uses.some((use) => {
+        const loader = typeof use === "string" ? use : (use as { loader?: string } | null)?.loader;
+        return typeof loader === "string" && loader.includes("fumadocs-mdx");
+      });
+
+      if (isFumadocsRule) rule.include = DOCS_DIR;
+    }
+
+    return result;
+  };
+
+  return config;
+}
+
+export default scopeFumadocsToDocsDir(withMDX(withPlugins(nextConfig)));

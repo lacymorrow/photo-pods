@@ -295,7 +295,7 @@ export const siteConfig: SiteConfig = {
       dark: "black",
     },
     locale: "en-US",
-    generator: "Next.js", // Use Next.js as generator
+    generator: "Next.js, shipkit.io",
     referrer: "origin-when-cross-origin",
     category: "photography",
     classification: "Photo & Video Sharing",
@@ -386,7 +386,7 @@ siteConfig.payload.adminTitleSuffix = ` - ${siteConfig.title} CMS`;
 
 // Make sure alternates exists before assigning canonical
 siteConfig.metadata.alternates ??= {};
-siteConfig.metadata.alternates.canonical = siteConfig.url;
+siteConfig.metadata.alternates.canonical = "./";
 // Advertise RSS feed for SEO and feed discovery (only when blog is enabled)
 if (process.env.NEXT_PUBLIC_HAS_BLOG === "true") {
   siteConfig.metadata.alternates.types = {

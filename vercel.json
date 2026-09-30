@@ -10,13 +10,11 @@
       "destination": "https://ai-offline.vercel.app/:match*"
     }
   ],
-
   "buildCommand": "bun run build:vercel",
   "devCommand": "bun run dev",
   "installCommand": "bun install --frozen-lockfile",
   "cleanUrls": true,
   "trailingSlash": false,
-
   "functions": {
     "src/app/api/**/*": {
       "maxDuration": 10,
@@ -24,7 +22,6 @@
       "excludeFiles": "{.next,*.cache,node_modules/eslint/**,node_modules/@types/**,node_modules/typescript/**,node_modules/three/**,node_modules/@react-three/**,node_modules/@huggingface/**,public,app}/**"
     }
   },
-
   "crons": [],
   "headers": [
     {
@@ -40,5 +37,6 @@
         }
       ]
     }
-  ]
+  ],
+  "ignoreCommand": "bash scripts/vercel-ignore-step.sh"
 }
