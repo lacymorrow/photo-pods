@@ -9,8 +9,6 @@ import { isAdmin } from "@/server/services/admin-service";
 
 const navLinks = [
   { href: routes.admin.users, label: "Users" },
-  { href: routes.admin.github, label: "GitHub" },
-  { href: routes.admin.integrations, label: "Integrations" },
   { href: routes.admin.feedback, label: "Feedback" },
   { href: routes.admin.payments, label: "Payments" },
   { href: routes.admin.moderationPods, label: "Moderation" },

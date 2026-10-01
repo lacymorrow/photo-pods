@@ -67,8 +67,8 @@ export const clerkConfig = {
   signInUrl: routes.auth.signIn,
   signUpUrl: routes.auth.signUp,
   /** Where Clerk sends the person after signing in or up. */
-  afterSignInUrl: routes.app.dashboard,
-  afterSignUpUrl: routes.app.dashboard,
+  afterSignInUrl: routes.pods.index,
+  afterSignUpUrl: routes.pods.index,
   /** Where sign-out lands. */
   afterSignOutUrl: routes.home,
   // Clerk dashboard redirect for user management
