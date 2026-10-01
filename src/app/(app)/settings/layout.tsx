@@ -9,8 +9,8 @@ import { Header } from "../../../components/headers/header";
 
 const sidebarNavItems = [
   {
-    title: "Dashboard",
-    href: routes.app.dashboard,
+    title: "My Pods",
+    href: routes.pods.index,
   },
   {
     title: "Profile",

@@ -29,7 +29,7 @@ export const GuestForm = () => {
         const result = await signIn("guest", {
           name: name.trim(),
           redirect: false,
-          redirectTo: nextUrl ?? routes.app.dashboard,
+          redirectTo: nextUrl ?? routes.pods.index,
         });
 
         // When redirect is false, NextAuth returns an object we can inspect

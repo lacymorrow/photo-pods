@@ -172,16 +172,13 @@ export const UserMenu: React.FC<UserMenuProps> = ({ size = "default", className 
             </DropdownMenuItem>
           )}
           <DropdownMenuItem asChild>
-            <Link href={routes.app.dashboard}>Dashboard</Link>
+            <Link href={routes.pods.index}>My Pods</Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
             <Link href={routes.settings.index}>
               Settings
               <ShortcutDisplay action={ShortcutAction.GOTO_SETTINGS} as={DropdownMenuShortcut} />
             </Link>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <Link href={routes.app.apiKeys}>API Keys</Link>
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />

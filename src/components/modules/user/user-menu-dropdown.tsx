@@ -122,9 +122,9 @@ export function UserMenuDropdown({
             </DropdownMenuItem>
           )}
           <DropdownMenuItem asChild>
-            <Link href={routes.app.dashboard}>
+            <Link href={routes.pods.index}>
               <RocketIcon className="mr-2 size-4" />
-              Dashboard
+              My Pods
             </Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
