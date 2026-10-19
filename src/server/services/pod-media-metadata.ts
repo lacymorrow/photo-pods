@@ -69,48 +69,162 @@ const fail = (message: string): never => {
 
 // --- JPEG: drop metadata segments, keep everything the decoder needs ---
 
-// APP1 (Exif/XMP), APP13 (Photoshop/IPTC) and COM carry metadata; APP0
-// (JFIF), APP2 (ICC color profile) and APP14 (Adobe transform) are needed
-// for correct decoding and carry no location/identity data.
-const JPEG_METADATA_MARKERS = new Set([0xe1, 0xed, 0xfe]);
+const JPEG_EOI = 0xd9;
+const JPEG_SOS = 0xda;
+const JPEG_COM = 0xfe;
+const JPEG_APP0 = 0xe0;
+const JPEG_APP2 = 0xe2;
+const JPEG_APP14 = 0xee;
+const JPEG_APP15 = 0xef;
+const JPEG_RST_FIRST = 0xd0;
+const JPEG_RST_LAST = 0xd7;
 
-const stripJpeg = (input: Uint8Array): StripResult => {
+const ICC_PROFILE_TAG = [0x49, 0x43, 0x43, 0x5f, 0x50, 0x52, 0x4f, 0x46, 0x49, 0x4c, 0x45, 0x00];
+
+const startsWith = (bytes: Uint8Array, tag: number[]) =>
+	bytes.length >= tag.length && tag.every((value, index) => bytes[index] === value);
+
+const JPEG_APP_NAMES = new Map<number, string>([
+	[0xe1, "APP1 (Exif/XMP)"],
+	[0xe3, "APP3 (Meta)"],
+	[0xeb, "APP11 (JUMBF)"],
+	[0xed, "APP13 (Photoshop/IPTC)"],
+]);
+
+/**
+ * Name the metadata a JPEG segment carries, or null when the decoder needs it.
+ *
+ * This is an allowlist on purpose. APP0 (JFIF) and APP14 (Adobe transform)
+ * are decode data. APP2 is decode data only when it holds an ICC profile:
+ * the same marker also carries MPF, and iPhone HDR/depth and Samsung
+ * dual-camera files park a complete second JPEG in there with its own Exif
+ * and GPS (LAC-4972 F1). Every other APPn is metadata, so a marker nobody
+ * has vetted fails closed instead of riding along.
+ */
+const jpegSegmentResidue = (marker: number, payload: Uint8Array): string | null => {
+	if (marker === JPEG_COM) return "COM";
+	if (marker < JPEG_APP0 || marker > JPEG_APP15) return null;
+	if (marker === JPEG_APP0 || marker === JPEG_APP14) return null;
+	if (marker === JPEG_APP2) {
+		return startsWith(payload, ICC_PROFILE_TAG) ? null : "APP2 (non-ICC, e.g. MPF)";
+	}
+	return JPEG_APP_NAMES.get(marker) ?? `APP${marker - JPEG_APP0}`;
+};
+
+interface JpegSegment {
+	/** Offset of the 0xFF that opens the segment. */
+	start: number;
+	/** Offset just past it — past the entropy-coded data, for SOS. */
+	end: number;
+	marker: number;
+	/** Segment body, excluding marker and length. Empty for SOS entropy data. */
+	payload: Uint8Array;
+}
+
+interface JpegLayout {
+	segments: JpegSegment[];
+	/** Offset of the 0xFF that opens EOI. */
+	eoiStart: number;
+	/** Bytes past EOI: motion-photo video, Samsung SEF, anything at all. */
+	trailer: Uint8Array;
+}
+
+/**
+ * Walk entropy-coded scan data to the next real marker. Inside a scan 0xFF
+ * is either a stuffed 0xFF00, a fill byte, or a restart marker; anything
+ * else ends the scan.
+ */
+const scanPastEntropy = (input: Uint8Array, from: number): number => {
+	let pos = from;
+	while (pos < input.length) {
+		if (input[pos] !== 0xff) {
+			pos++;
+			continue;
+		}
+		const next = input[pos + 1];
+		if (next === undefined) fail("truncated JPEG entropy data");
+		if (next === 0xff) {
+			pos++;
+			continue;
+		}
+		if (next === 0x00 || (next! >= JPEG_RST_FIRST && next! <= JPEG_RST_LAST)) {
+			pos += 2;
+			continue;
+		}
+		return pos;
+	}
+	return fail("JPEG scan data ends without a marker");
+};
+
+/**
+ * Parse a JPEG into its segments, the EOI, and whatever follows. One walker
+ * for both the strip and the verify pass: when they each had their own, the
+ * two disagreed about what the file even contained (LAC-4972 F1/F2).
+ */
+const readJpeg = (input: Uint8Array): JpegLayout => {
 	const dv = view(input);
-	const kept: Uint8Array[] = [input.subarray(0, 2)];
+	const segments: JpegSegment[] = [];
 	let pos = 2;
-	let changed = false;
 
 	while (pos < input.length) {
 		if (input[pos] !== 0xff) fail(`expected JPEG marker at ${pos}`);
-		// Skip fill bytes (0xFF padding before a marker is legal).
+		// 0xFF padding before a marker is legal.
 		let markerAt = pos;
 		while (input[markerAt + 1] === 0xff) markerAt++;
 		const marker = input[markerAt + 1];
 		if (marker === undefined) fail("truncated JPEG");
 
-		if (marker === 0xd9) {
-			// EOI without SOS — degenerate but well-formed enough to pass through.
-			kept.push(input.subarray(pos));
-			break;
+		if (marker === JPEG_EOI) {
+			return {
+				segments,
+				eoiStart: markerAt,
+				trailer: input.subarray(markerAt + 2),
+			};
 		}
-		if (marker === 0xda) {
-			// Start of scan: entropy-coded data follows; copy the rest verbatim.
-			kept.push(input.subarray(pos));
-			break;
-		}
+
 		if (markerAt + 4 > input.length) fail("truncated JPEG segment header");
 		const length = dv.getUint16(markerAt + 2);
 		if (length < 2) fail("invalid JPEG segment length");
-		const end = markerAt + 2 + length;
-		if (end > input.length) fail("JPEG segment overruns file");
+		const payloadStart = markerAt + 4;
+		const headerEnd = markerAt + 2 + length;
+		if (headerEnd > input.length) fail("JPEG segment overruns file");
 
-		if (JPEG_METADATA_MARKERS.has(marker!)) {
-			changed = true;
-		} else {
-			kept.push(input.subarray(pos, end));
-		}
+		// A scan's entropy data is not a segment and carries no length, so walk
+		// it to the next marker. Progressive JPEGs have several scans, and the
+		// old parser gave up at the first one — which is how the region past it
+		// went unread.
+		const end = marker === JPEG_SOS ? scanPastEntropy(input, headerEnd) : headerEnd;
+		segments.push({
+			start: pos,
+			end,
+			marker: marker!,
+			payload: input.subarray(payloadStart, headerEnd),
+		});
 		pos = end;
 	}
+
+	return fail("JPEG ends without EOI");
+};
+
+const stripJpeg = (input: Uint8Array): StripResult => {
+	const { segments, eoiStart, trailer } = readJpeg(input);
+	const kept: Uint8Array[] = [input.subarray(0, 2)];
+	let changed = false;
+
+	for (const segment of segments) {
+		if (jpegSegmentResidue(segment.marker, segment.payload)) {
+			changed = true;
+		} else {
+			kept.push(input.subarray(segment.start, segment.end));
+		}
+	}
+	kept.push(input.subarray(eoiStart, eoiStart + 2));
+
+	// Past EOI is not image data. Samsung SEF trailers and Google motion
+	// photos park a whole second file there, metadata and GPS included, and
+	// neither pass can vouch for it. Truncating keeps the still image and
+	// drops the payload we cannot clean (LAC-4972 F2).
+	if (trailer.length > 0) changed = true;
 
 	return {
 		ok: true,
@@ -124,11 +238,25 @@ const stripJpeg = (input: Uint8Array): StripResult => {
 
 const PNG_METADATA_CHUNKS = new Set(["eXIf", "tEXt", "zTXt", "iTXt", "tIME"]);
 
-const stripPng = (input: Uint8Array): StripResult => {
+interface PngChunk {
+	start: number;
+	end: number;
+	type: string;
+}
+
+interface PngLayout {
+	chunks: PngChunk[];
+	/** Offset just past IEND. */
+	imageEnd: number;
+	/** Bytes past IEND, which a PNG is not supposed to have. */
+	trailer: Uint8Array;
+}
+
+/** Parse a PNG into its chunks and whatever sits past IEND. */
+const readPng = (input: Uint8Array): PngLayout => {
 	const dv = view(input);
-	const kept: Uint8Array[] = [input.subarray(0, 8)];
+	const chunks: PngChunk[] = [];
 	let pos = 8;
-	let changed = false;
 
 	while (pos < input.length) {
 		if (pos + 8 > input.length) fail("truncated PNG chunk header");
@@ -136,18 +264,33 @@ const stripPng = (input: Uint8Array): StripResult => {
 		const type = fourcc(input, pos + 4);
 		const end = pos + 8 + length + 4; // header + data + CRC
 		if (end > input.length) fail("PNG chunk overruns file");
-
-		if (PNG_METADATA_CHUNKS.has(type)) {
-			changed = true;
-		} else {
-			kept.push(input.subarray(pos, end));
-		}
+		chunks.push({ start: pos, end, type });
 		pos = end;
 		if (type === "IEND") {
-			kept.push(input.subarray(pos)); // trailing bytes, if any
-			break;
+			return { chunks, imageEnd: end, trailer: input.subarray(end) };
 		}
 	}
+
+	return fail("PNG ends without IEND");
+};
+
+const stripPng = (input: Uint8Array): StripResult => {
+	const { chunks, trailer } = readPng(input);
+	const kept: Uint8Array[] = [input.subarray(0, 8)];
+	let changed = false;
+
+	for (const chunk of chunks) {
+		if (PNG_METADATA_CHUNKS.has(chunk.type)) {
+			changed = true;
+		} else {
+			kept.push(input.subarray(chunk.start, chunk.end));
+		}
+	}
+
+	// Same reasoning as the JPEG trailer: an eXIf chunk appended past IEND is
+	// still readable by anything scanning the file, and is not image data
+	// (LAC-4972 F2).
+	if (trailer.length > 0) changed = true;
 
 	return {
 		ok: true,
@@ -167,7 +310,8 @@ const stripWebp = (input: Uint8Array): StripResult => {
 	const dv = view(input);
 	const kept: Uint8Array[] = [];
 	let pos = 12;
-	let changed = false;
+	let droppedChunk = false;
+	let staleFlags = false;
 	let vp8xFlagOffsetInOutput = -1;
 	let outputLength = 0;
 
@@ -180,15 +324,24 @@ const stripWebp = (input: Uint8Array): StripResult => {
 		if (end > input.length) fail("WebP chunk overruns file");
 
 		if (WEBP_METADATA_CHUNKS.has(type)) {
-			changed = true;
+			droppedChunk = true;
 		} else {
-			if (type === "VP8X") vp8xFlagOffsetInOutput = outputLength + 8;
+			if (type === "VP8X") {
+				vp8xFlagOffsetInOutput = outputLength + 8;
+				staleFlags =
+					((input[pos + 8] ?? 0) & (VP8X_EXIF_FLAG | VP8X_XMP_FLAG)) !== 0;
+			}
 			kept.push(input.subarray(pos, end));
 			outputLength += end - pos;
 		}
 		pos = end;
 	}
 
+	// Clear the flag bits whenever they are set, not only when a chunk went
+	// away. A file advertising EXIF it does not actually contain used to come
+	// out unchanged and then fail verification, which left the uploader with
+	// a rejection no retry could fix (LAC-4972 F3).
+	const changed = droppedChunk || staleFlags;
 	if (!changed) return { ok: true, changed: false, data: input, format: "webp" };
 
 	const body = concat(kept);
@@ -481,61 +634,50 @@ export const verifyImageMetadataStripped = (input: Uint8Array): VerifyResult => 
 	}
 };
 
-const JPEG_METADATA_MARKER_NAMES = new Map<number, string>([
-	[0xe1, "APP1 (Exif/XMP)"],
-	[0xed, "APP13 (Photoshop/IPTC)"],
-	[0xfe, "COM"],
-]);
-
 const verifyJpeg = (input: Uint8Array): VerifyResult => {
-	const dv = view(input);
-	let pos = 2;
+	const { segments, trailer } = readJpeg(input);
 
-	while (pos < input.length) {
-		if (input[pos] !== 0xff) fail(`expected JPEG marker at ${pos}`);
-		let markerAt = pos;
-		while (input[markerAt + 1] === 0xff) markerAt++;
-		const marker = input[markerAt + 1];
-		if (marker === undefined) fail("truncated JPEG");
-		// EOI or start of scan: no metadata segments can follow.
-		if (marker === 0xd9 || marker === 0xda) break;
-		if (markerAt + 4 > input.length) fail("truncated JPEG segment header");
-		const length = dv.getUint16(markerAt + 2);
-		if (length < 2) fail("invalid JPEG segment length");
-		const end = markerAt + 2 + length;
-		if (end > input.length) fail("JPEG segment overruns file");
-		const segment = marker!;
-		if (JPEG_METADATA_MARKERS.has(segment)) {
-			return {
-				ok: true,
-				clean: false,
-				residue:
-					JPEG_METADATA_MARKER_NAMES.get(segment) ??
-					`marker 0x${segment.toString(16)}`,
-				format: "jpeg",
-			};
-		}
-		pos = end;
+	for (const segment of segments) {
+		const residue = jpegSegmentResidue(segment.marker, segment.payload);
+		if (residue) return { ok: true, clean: false, residue, format: "jpeg" };
+	}
+
+	// Never report clean for a region that was not read. The strip truncates
+	// here, so bytes past EOI mean the file did not come through the stripper
+	// (LAC-4972 F2).
+	if (trailer.length > 0) {
+		return {
+			ok: true,
+			clean: false,
+			residue: `${trailer.length} bytes trailing after EOI`,
+			format: "jpeg",
+		};
 	}
 
 	return { ok: true, clean: true, format: "jpeg" };
 };
 
 const verifyPng = (input: Uint8Array): VerifyResult => {
-	const dv = view(input);
-	let pos = 8;
+	const { chunks, trailer } = readPng(input);
 
-	while (pos < input.length) {
-		if (pos + 8 > input.length) fail("truncated PNG chunk header");
-		const length = dv.getUint32(pos);
-		const type = fourcc(input, pos + 4);
-		const end = pos + 8 + length + 4;
-		if (end > input.length) fail("PNG chunk overruns file");
-		if (PNG_METADATA_CHUNKS.has(type)) {
-			return { ok: true, clean: false, residue: `${type} chunk`, format: "png" };
+	for (const chunk of chunks) {
+		if (PNG_METADATA_CHUNKS.has(chunk.type)) {
+			return {
+				ok: true,
+				clean: false,
+				residue: `${chunk.type} chunk`,
+				format: "png",
+			};
 		}
-		pos = end;
-		if (type === "IEND") break;
+	}
+
+	if (trailer.length > 0) {
+		return {
+			ok: true,
+			clean: false,
+			residue: `${trailer.length} bytes trailing after IEND`,
+			format: "png",
+		};
 	}
 
 	return { ok: true, clean: true, format: "png" };
