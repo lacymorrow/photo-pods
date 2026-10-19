@@ -129,6 +129,7 @@ const mediaRow = (overrides: Record<string, unknown> = {}) => ({
 	url: null,
 	readyAt: null,
 	exifStripped: null,
+	exifVerified: null,
 	...overrides,
 });
 
@@ -196,6 +197,8 @@ describe("finalizeUpload — server-side EXIF enforcement (LAC-3169)", () => {
 		const mediaUpdate = mocks.updateCalls[0]!.values;
 		expect(mediaUpdate.status).toBe("ready");
 		expect(mediaUpdate.exifStripped).toBeInstanceOf(Date);
+		// Strip and verification are stamped separately (LAC-2932).
+		expect(mediaUpdate.exifVerified).toBeInstanceOf(Date);
 		expect(mediaUpdate.size).toBe(putBodies[0]!.byteLength);
 	});
 
@@ -212,6 +215,7 @@ describe("finalizeUpload — server-side EXIF enforcement (LAC-3169)", () => {
 		const mediaUpdate = mocks.updateCalls[0]!.values;
 		expect(mediaUpdate.status).toBe("ready");
 		expect(mediaUpdate.exifStripped).toBeInstanceOf(Date);
+		expect(mediaUpdate.exifVerified).toBeInstanceOf(Date);
 	});
 
 	it("fails closed when the object is not a parseable image", async () => {
@@ -250,5 +254,6 @@ describe("finalizeUpload — server-side EXIF enforcement (LAC-3169)", () => {
 		const mediaUpdate = mocks.updateCalls[0]!.values;
 		expect(mediaUpdate.status).toBe("processing");
 		expect(mediaUpdate.exifStripped).toBeUndefined();
+		expect(mediaUpdate.exifVerified).toBeUndefined();
 	});
 });

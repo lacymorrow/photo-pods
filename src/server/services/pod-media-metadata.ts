@@ -438,3 +438,186 @@ const concat = (parts: Uint8Array[]): Uint8Array => {
 	}
 	return out;
 };
+
+// --- verification (LAC-2932) ---
+//
+// Stripping and verifying are separate events. `stripImageMetadata` reports
+// what it *did*; this reports what is *left* in a set of bytes, by re-walking
+// the container from scratch. Only a clean verdict from here justifies
+// stamping `pod_media.exif_verified_at`.
+//
+// Re-running the stripper is not a substitute. For HEIF it blanks payloads in
+// place and leaves the iinf/iloc declarations intact, so a second strip pass
+// always reports `changed: true` on an already-clean file. Verification has to
+// look at the payload bytes, not at whether a write happened.
+
+export type VerifyResult =
+	| {
+			ok: true;
+			clean: boolean;
+			/** What is still present, when `clean` is false. */
+			residue?: string;
+			format: "jpeg" | "png" | "webp" | "heif";
+	  }
+	| { ok: false; reason: string };
+
+/**
+ * Check that a set of image bytes carries no EXIF/XMP/IPTC payload. Same
+ * fail-closed contract as the stripper: `ok: false` means we could not parse
+ * the container, which is not a pass.
+ */
+export const verifyImageMetadataStripped = (input: Uint8Array): VerifyResult => {
+	try {
+		if (isJpeg(input)) return verifyJpeg(input);
+		if (isPng(input)) return verifyPng(input);
+		if (isWebp(input)) return verifyWebp(input);
+		if (isIsoBmff(input)) return verifyHeif(input);
+		return { ok: false, reason: "unrecognized image format" };
+	} catch (error) {
+		return {
+			ok: false,
+			reason: `malformed image: ${error instanceof Error ? error.message : "parse error"}`,
+		};
+	}
+};
+
+const JPEG_METADATA_MARKER_NAMES = new Map<number, string>([
+	[0xe1, "APP1 (Exif/XMP)"],
+	[0xed, "APP13 (Photoshop/IPTC)"],
+	[0xfe, "COM"],
+]);
+
+const verifyJpeg = (input: Uint8Array): VerifyResult => {
+	const dv = view(input);
+	let pos = 2;
+
+	while (pos < input.length) {
+		if (input[pos] !== 0xff) fail(`expected JPEG marker at ${pos}`);
+		let markerAt = pos;
+		while (input[markerAt + 1] === 0xff) markerAt++;
+		const marker = input[markerAt + 1];
+		if (marker === undefined) fail("truncated JPEG");
+		// EOI or start of scan: no metadata segments can follow.
+		if (marker === 0xd9 || marker === 0xda) break;
+		if (markerAt + 4 > input.length) fail("truncated JPEG segment header");
+		const length = dv.getUint16(markerAt + 2);
+		if (length < 2) fail("invalid JPEG segment length");
+		const end = markerAt + 2 + length;
+		if (end > input.length) fail("JPEG segment overruns file");
+		const segment = marker!;
+		if (JPEG_METADATA_MARKERS.has(segment)) {
+			return {
+				ok: true,
+				clean: false,
+				residue:
+					JPEG_METADATA_MARKER_NAMES.get(segment) ??
+					`marker 0x${segment.toString(16)}`,
+				format: "jpeg",
+			};
+		}
+		pos = end;
+	}
+
+	return { ok: true, clean: true, format: "jpeg" };
+};
+
+const verifyPng = (input: Uint8Array): VerifyResult => {
+	const dv = view(input);
+	let pos = 8;
+
+	while (pos < input.length) {
+		if (pos + 8 > input.length) fail("truncated PNG chunk header");
+		const length = dv.getUint32(pos);
+		const type = fourcc(input, pos + 4);
+		const end = pos + 8 + length + 4;
+		if (end > input.length) fail("PNG chunk overruns file");
+		if (PNG_METADATA_CHUNKS.has(type)) {
+			return { ok: true, clean: false, residue: `${type} chunk`, format: "png" };
+		}
+		pos = end;
+		if (type === "IEND") break;
+	}
+
+	return { ok: true, clean: true, format: "png" };
+};
+
+const verifyWebp = (input: Uint8Array): VerifyResult => {
+	const dv = view(input);
+	let pos = 12;
+	let vp8xFlags = 0;
+
+	while (pos < input.length) {
+		if (pos + 8 > input.length) fail("truncated WebP chunk header");
+		const type = fourcc(input, pos);
+		const length = dv.getUint32(pos + 4, true);
+		const end = pos + 8 + length + (length % 2);
+		if (end > input.length) fail("WebP chunk overruns file");
+		if (WEBP_METADATA_CHUNKS.has(type)) {
+			return {
+				ok: true,
+				clean: false,
+				residue: `${type.trim()} chunk`,
+				format: "webp",
+			};
+		}
+		if (type === "VP8X") vp8xFlags = input[pos + 8] ?? 0;
+		pos = end;
+	}
+
+	// The chunks are gone but the container still advertises them: readers may
+	// go looking, and the stripper is supposed to clear these bits.
+	if (vp8xFlags & (VP8X_EXIF_FLAG | VP8X_XMP_FLAG)) {
+		return {
+			ok: true,
+			clean: false,
+			residue: "VP8X metadata flag still set",
+			format: "webp",
+		};
+	}
+
+	return { ok: true, clean: true, format: "webp" };
+};
+
+/** True when an EXIF item payload holds nothing but the empty TIFF stub. */
+const isBlankedExif = (bytes: Uint8Array): boolean => {
+	const allZero = (b: Uint8Array) => b.every((value) => value === 0x00);
+	if (allZero(bytes)) return true;
+	if (bytes.length < EMPTY_EXIF_BLOCK.length) return false;
+	const stubbed = EMPTY_EXIF_BLOCK.every((value, index) => bytes[index] === value);
+	return stubbed && allZero(bytes.subarray(EMPTY_EXIF_BLOCK.length));
+};
+
+const verifyHeif = (input: Uint8Array): VerifyResult => {
+	const topLevel = walkBoxes(input, 0, input.length);
+	const meta = topLevel.find((box) => box.type === "meta");
+	if (!meta) return { ok: true, clean: true, format: "heif" };
+
+	const children = walkBoxes(input, meta.payloadStart + 4, meta.end);
+	const iinf = children.find((box) => box.type === "iinf");
+	const iloc = children.find((box) => box.type === "iloc");
+	const idat = children.find((box) => box.type === "idat");
+	if (!iinf || !iloc) return { ok: true, clean: true, format: "heif" };
+
+	const targets = collectMetadataItems(input, iinf);
+	if (targets.size === 0) return { ok: true, clean: true, format: "heif" };
+
+	// Declared but unlocatable items carry nothing a reader can reach, which
+	// is what the stripper relies on too.
+	for (const extent of resolveExtents(input, iloc, idat, targets)) {
+		const bytes = input.subarray(extent.offset, extent.offset + extent.length);
+		const blank =
+			extent.kind === "xmp"
+				? bytes.every((value) => value === 0x20)
+				: isBlankedExif(bytes);
+		if (!blank) {
+			return {
+				ok: true,
+				clean: false,
+				residue: `${extent.kind === "xmp" ? "XMP" : "Exif"} item payload`,
+				format: "heif",
+			};
+		}
+	}
+
+	return { ok: true, clean: true, format: "heif" };
+};

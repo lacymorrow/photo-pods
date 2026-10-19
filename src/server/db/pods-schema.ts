@@ -168,7 +168,13 @@ export const podMedia = createTable(
 		durationSeconds: integer("duration_seconds"),
 		size: bigint("size", { mode: "number" }),
 		mimeType: varchar("mime_type", { length: 100 }),
+		// When the server-side strip actually ran over these bytes (LAC-3169).
 		exifStripped: timestamp("exif_stripped_at", { withTimezone: true }),
+		// When the stored bytes were re-scanned and proven metadata-free. A
+		// distinct event from the strip itself: the strip can run and still
+		// leave something behind, so audits (and the LAC-2855 §3 R2 finalize
+		// worker) need the verification timestamp separately. (LAC-2932.)
+		exifVerified: timestamp("exif_verified_at", { withTimezone: true }),
 		exifData: json("exif_data").$type<Record<string, unknown>>(),
 		hiddenAt: timestamp("hidden_at", { withTimezone: true }),
 		reportCount: integer("report_count").notNull().default(0),

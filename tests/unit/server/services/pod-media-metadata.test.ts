@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { stripImageMetadata } from "@/server/services/pod-media-metadata";
+import {
+	stripImageMetadata,
+	verifyImageMetadataStripped,
+} from "@/server/services/pod-media-metadata";
 
 // --- byte helpers ---
 
@@ -438,5 +441,121 @@ describe("stripImageMetadata — unknown formats", () => {
 		);
 		expect(stripImageMetadata(new Uint8Array(0)).ok).toBe(false);
 		expect(stripImageMetadata(Uint8Array.from([1, 2, 3])).ok).toBe(false);
+	});
+});
+
+// --- verification (LAC-2932) ---
+
+const expectClean = (bytes: Uint8Array, clean: boolean) => {
+	const result = verifyImageMetadataStripped(bytes);
+	if (!result.ok) throw new Error(`expected ok, got: ${result.reason}`);
+	expect(result.clean).toBe(clean);
+	return result;
+};
+
+const stripped = (bytes: Uint8Array) => {
+	const result = stripImageMetadata(bytes);
+	if (!result.ok) throw new Error(`expected ok, got: ${result.reason}`);
+	return result.data;
+};
+
+describe("verifyImageMetadataStripped — residue detection (LAC-2932)", () => {
+	it("flags a JPEG that still carries Exif, XMP, IPTC or COM", () => {
+		expect(expectClean(buildJpeg([exifApp1]), false).residue).toContain("APP1");
+		expect(expectClean(buildJpeg([xmpApp1]), false).residue).toContain("APP1");
+		expect(expectClean(buildJpeg([iptcApp13]), false).residue).toContain(
+			"APP13",
+		);
+		expect(
+			expectClean(buildJpeg([jpegSegment(0xfe, ascii("at 12.34"))]), false)
+				.residue,
+		).toContain("COM");
+	});
+
+	it("passes a JPEG whose only app segments are needed for decoding", () => {
+		expectClean(buildJpeg([iccApp2]), true);
+		expectClean(buildJpeg([]), true);
+	});
+
+	it("flags PNG metadata chunks and passes a clean PNG", () => {
+		expect(
+			expectClean(buildPng([pngChunk("eXIf", tiffWithGps())]), false).residue,
+		).toContain("eXIf");
+		expect(
+			expectClean(buildPng([pngChunk("iTXt", ascii("xmp\0\0\0\0\0<gps/>"))]), false)
+				.residue,
+		).toContain("iTXt");
+		expectClean(buildPng([]), true);
+	});
+
+	it("flags WebP EXIF/XMP chunks, and a VP8X flag left set with no chunk", () => {
+		expect(
+			expectClean(
+				buildWebp([vp8x(0x08), webpChunk("EXIF", tiffWithGps())]),
+				false,
+			).residue,
+		).toContain("EXIF");
+		expect(
+			expectClean(
+				buildWebp([vp8x(0x04), webpChunk("XMP ", ascii("<gps/>"))]),
+				false,
+			).residue,
+		).toContain("XMP");
+		// Chunk gone but the container still advertises it: readers go looking.
+		expect(
+			expectClean(buildWebp([vp8x(0x08), webpChunk("VP8 ", [1, 2])]), false)
+				.residue,
+		).toContain("VP8X");
+		expectClean(buildWebp([vp8x(0x20), webpChunk("VP8 ", [1, 2])]), true);
+	});
+
+	it("flags a HEIF whose Exif/XMP item payloads are still populated", () => {
+		const { bytes } = buildHeif([heifExifItem(), heifXmpItem()]);
+		expect(expectClean(bytes, false).residue).toMatch(/Exif|XMP/);
+	});
+
+	it("fails closed rather than passing bytes it cannot parse", () => {
+		expect(
+			verifyImageMetadataStripped(
+				Uint8Array.from([0xff, 0xd8, 0xff, 0xe1, 0xff, 0xff, 0x00]),
+			).ok,
+		).toBe(false);
+		expect(
+			verifyImageMetadataStripped(Uint8Array.from(ascii("GIF89a....."))).ok,
+		).toBe(false);
+		expect(verifyImageMetadataStripped(new Uint8Array(0)).ok).toBe(false);
+	});
+});
+
+describe("verifyImageMetadataStripped — strip output verifies clean (LAC-2932)", () => {
+	it("passes stripped JPEG, PNG and WebP output", () => {
+		expectClean(stripped(buildJpeg([exifApp1, xmpApp1, iptcApp13])), true);
+		expectClean(
+			stripped(
+				buildPng([
+					pngChunk("eXIf", tiffWithGps()),
+					pngChunk("tEXt", ascii("GPSLatitude\0 12.34")),
+				]),
+			),
+			true,
+		);
+		expectClean(
+			stripped(buildWebp([vp8x(0x0c), webpChunk("EXIF", tiffWithGps())])),
+			true,
+		);
+	});
+
+	it("passes blanked HEIF output, which a second strip pass cannot tell you", () => {
+		const { bytes } = buildHeif([heifExifItem(), heifXmpItem()]);
+		const clean = stripped(bytes);
+		expectClean(clean, true);
+
+		// Why verification is its own function: the HEIF stripper blanks payloads
+		// in place and leaves the iinf/iloc declarations, so re-running it on
+		// already-clean bytes still reports `changed: true`. "Did we write?" is
+		// not "is it clean?".
+		const second = stripImageMetadata(clean);
+		if (!second.ok) throw new Error("expected ok");
+		expect(second.changed).toBe(true);
 	});
 });
