@@ -498,6 +498,33 @@ describe("verifyImageMetadataStripped — residue detection (LAC-2932)", () => {
 		expectClean(stripped(buildJpeg([mpf])), true);
 	});
 
+	// LAC-4972 A1. Same shape as F1 one marker over: APP0 is JFIF *and* JFXX,
+	// and a JFXX extension_code 0x10 is a nested JPEG thumbnail that brings
+	// its own APP1. A pass by marker let that thumbnail keep its GPS.
+	it("flags an APP0 segment that is not JFIF", () => {
+		const jfxx = jpegSegment(0xe0, [
+			...ascii("JFXX\0"),
+			0x10,
+			...buildJpeg([exifApp1]),
+		]);
+		const input = buildJpeg([jfxx]);
+		expect(hasBytes(input, GPS_TAG_LE)).toBe(true);
+		expect(expectClean(input, false).residue).toContain("APP0");
+		expect(hasBytes(stripped(input), GPS_TAG_LE)).toBe(false);
+		// The file's own JFIF APP0 is decode data and stays.
+		expect(hasBytes(stripped(input), ascii("JFIF"))).toBe(true);
+		expectClean(stripped(input), true);
+	});
+
+	// Every allowlisted marker now has to identify itself, APP14 included.
+	it("passes an Adobe APP14 and flags one that is not", () => {
+		const adobe = jpegSegment(0xee, [...ascii("Adobe"), 0x64, 0, 0, 0, 0, 0]);
+		expectClean(buildJpeg([adobe]), true);
+		const spoofed = jpegSegment(0xee, [...ascii("Exif\0\0"), ...tiffWithGps()]);
+		expect(expectClean(buildJpeg([spoofed]), false).residue).toContain("APP14");
+		expect(hasBytes(stripped(buildJpeg([spoofed])), GPS_TAG_LE)).toBe(false);
+	});
+
 	// Allowlist, not blocklist: an APPn nobody vetted is residue, not cargo.
 	it("flags other metadata-bearing APPn segments", () => {
 		const app3 = jpegSegment(0xe3, [...ascii("Meta\0\0"), ...tiffWithGps()]);

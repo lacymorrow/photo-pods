@@ -80,6 +80,8 @@ const JPEG_RST_FIRST = 0xd0;
 const JPEG_RST_LAST = 0xd7;
 
 const ICC_PROFILE_TAG = [0x49, 0x43, 0x43, 0x5f, 0x50, 0x52, 0x4f, 0x46, 0x49, 0x4c, 0x45, 0x00];
+const JFIF_TAG = [0x4a, 0x46, 0x49, 0x46, 0x00];
+const ADOBE_TAG = [0x41, 0x64, 0x6f, 0x62, 0x65];
 
 const startsWith = (bytes: Uint8Array, tag: number[]) =>
 	bytes.length >= tag.length && tag.every((value, index) => bytes[index] === value);
@@ -94,19 +96,27 @@ const JPEG_APP_NAMES = new Map<number, string>([
 /**
  * Name the metadata a JPEG segment carries, or null when the decoder needs it.
  *
- * This is an allowlist on purpose. APP0 (JFIF) and APP14 (Adobe transform)
- * are decode data. APP2 is decode data only when it holds an ICC profile:
- * the same marker also carries MPF, and iPhone HDR/depth and Samsung
- * dual-camera files park a complete second JPEG in there with its own Exif
- * and GPS (LAC-4972 F1). Every other APPn is metadata, so a marker nobody
- * has vetted fails closed instead of riding along.
+ * This is an allowlist on purpose, and the marker alone never earns a pass:
+ * the payload has to identify itself. APP0 is decode data as JFIF, but the
+ * same marker carries JFXX, which is a nested thumbnail that can bring its
+ * own APP1 (LAC-4972 A1). APP2 is decode data as an ICC profile, but the
+ * same marker carries MPF, and iPhone HDR/depth and Samsung dual-camera
+ * files park a complete second JPEG in there with its own Exif and GPS
+ * (LAC-4972 F1). APP14 is decode data as the Adobe colour transform.
+ * Everything else is metadata, so a marker nobody has vetted fails closed
+ * instead of riding along.
  */
 const jpegSegmentResidue = (marker: number, payload: Uint8Array): string | null => {
 	if (marker === JPEG_COM) return "COM";
 	if (marker < JPEG_APP0 || marker > JPEG_APP15) return null;
-	if (marker === JPEG_APP0 || marker === JPEG_APP14) return null;
+	if (marker === JPEG_APP0) {
+		return startsWith(payload, JFIF_TAG) ? null : "APP0 (non-JFIF, e.g. JFXX thumbnail)";
+	}
 	if (marker === JPEG_APP2) {
 		return startsWith(payload, ICC_PROFILE_TAG) ? null : "APP2 (non-ICC, e.g. MPF)";
+	}
+	if (marker === JPEG_APP14) {
+		return startsWith(payload, ADOBE_TAG) ? null : "APP14 (non-Adobe)";
 	}
 	return JPEG_APP_NAMES.get(marker) ?? `APP${marker - JPEG_APP0}`;
 };
