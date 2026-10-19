@@ -7,10 +7,7 @@ import { auth } from "@/server/auth";
 import { db } from "@/server/db";
 import { podMedia, pods } from "@/server/db/pods-schema";
 import { accounts, users } from "@/server/db/schema";
-import {
-  collectMediaKeys,
-  deleteObjectsWithRetry,
-} from "@/server/services/pod-storage-cleanup";
+import { collectMediaKeys, deleteObjectsWithRetry } from "@/server/services/pod-storage-cleanup";
 
 interface ProfileData {
   name: string;
@@ -118,9 +115,9 @@ export async function deleteAccount() {
               // Any media in pods the user owns also disappears via cascade.
               // Drizzle's inArray needs the imported operator; use a raw OR
               // over the pod ids to keep the import surface small.
-              ...ownedPodIds.map((id) => eq(podMedia.podId, id)),
+              ...ownedPodIds.map((id) => eq(podMedia.podId, id))
             )
-          : eq(podMedia.uploadedById, userId),
+          : eq(podMedia.uploadedById, userId)
       );
     const keys = mediaRows.flatMap((m) => collectMediaKeys(m));
 

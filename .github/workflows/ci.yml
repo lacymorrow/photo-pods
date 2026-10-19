@@ -22,6 +22,11 @@ name: CI
 on:
   pull_request:
     branches: [main]
+    # `labeled` is required for the "ci:full" escape hatch below. Without it the
+    # default set (opened, synchronize, reopened) means adding the label never
+    # re-triggers CI, and re-running an existing run re-evaluates the `if:`
+    # guards against the original unlabeled payload.
+    types: [opened, synchronize, reopened, labeled]
   push:
     branches: [main]
 

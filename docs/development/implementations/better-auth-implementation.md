@@ -56,8 +56,7 @@ Add to `src/config/features-config.ts`:
 
 ```typescript
 const isBetterAuthEnabled =
-  process.env.BETTER_AUTH_ENABLED === "true" &&
-  !!process.env.BETTER_AUTH_SECRET;
+  process.env.BETTER_AUTH_ENABLED === "true" && !!process.env.BETTER_AUTH_SECRET;
 ```
 
 ### 3. Better Auth Configuration Structure

@@ -89,5 +89,5 @@ This document provides a comprehensive guide to implementing secure webhook hand
 ## Support Documentation
 
 - [Lemon Squeezy Webhook Documentation](https://docs.lemonsqueezy.com/help/webhooks)
-- [Webhook Security Best Practices Guide](./integrations/lemonsqueezy-webhooks-best-practices.md)
-- [Security Audit Checklist](./integrations/security/LEMONSQUEEZY_WEBHOOK_SECURITY_AUDIT.md)
+- [Webhook Security Best Practices Guide](/docs/guides/webhooks)
+- [Lemon Squeezy Integration](/docs/integrations/payments/lemonsqueezy)

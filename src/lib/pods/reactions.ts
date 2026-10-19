@@ -7,29 +7,29 @@
  */
 
 export interface ReactionSpec {
-	emoji: string;
-	label: string;
-	/** Stable string sent to the backend. */
-	slug: string;
+  emoji: string;
+  label: string;
+  /** Stable string sent to the backend. */
+  slug: string;
 }
 
 export const REACTIONS: ReactionSpec[] = [
-	{ emoji: "❤️", label: "Love", slug: "love" },
-	{ emoji: "🔥", label: "Fire", slug: "fire" },
-	{ emoji: "😂", label: "Funny", slug: "funny" },
-	{ emoji: "😍", label: "Heart eyes", slug: "heart_eyes" },
-	{ emoji: "🤩", label: "Amazed", slug: "amazed" },
-	{ emoji: "👏", label: "Applause", slug: "applause" },
-	{ emoji: "😮", label: "Wow", slug: "wow" },
-	{ emoji: "🥹", label: "Touched", slug: "touched" },
-	{ emoji: "📸", label: "Great shot", slug: "great_shot" },
-	{ emoji: "🏆", label: "Best one", slug: "best_one" },
-	{ emoji: "💯", label: "Perfect", slug: "perfect" },
-	{ emoji: "👎", label: "Dislike", slug: "dislike" },
+  { emoji: "❤️", label: "Love", slug: "love" },
+  { emoji: "🔥", label: "Fire", slug: "fire" },
+  { emoji: "😂", label: "Funny", slug: "funny" },
+  { emoji: "😍", label: "Heart eyes", slug: "heart_eyes" },
+  { emoji: "🤩", label: "Amazed", slug: "amazed" },
+  { emoji: "👏", label: "Applause", slug: "applause" },
+  { emoji: "😮", label: "Wow", slug: "wow" },
+  { emoji: "🥹", label: "Touched", slug: "touched" },
+  { emoji: "📸", label: "Great shot", slug: "great_shot" },
+  { emoji: "🏆", label: "Best one", slug: "best_one" },
+  { emoji: "💯", label: "Perfect", slug: "perfect" },
+  { emoji: "👎", label: "Dislike", slug: "dislike" },
 ];
 
 export const REACTION_BY_SLUG: Record<string, ReactionSpec> = Object.fromEntries(
-	REACTIONS.map((r) => [r.slug, r]),
+  REACTIONS.map((r) => [r.slug, r])
 );
 
 export type ReactionCounts = Record<string, number>;

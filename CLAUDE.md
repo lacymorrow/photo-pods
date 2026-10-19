@@ -272,6 +272,7 @@ NEXTAUTH_URL=               # App URL
 ```
 
 ### Optional Feature Enablement
+
 ```env
 NEXT_PUBLIC_FEATURE_AUTH_GITHUB_ENABLED=true
 NEXT_PUBLIC_FEATURE_PAYMENTS_LEMONSQUEEZY_ENABLED=true

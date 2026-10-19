@@ -13,21 +13,18 @@ export const MAX_UPLOAD_BATCH = 50;
 export const MAX_MEDIA_PER_POD = 10_000;
 
 export interface BatchAcceptResult<T> {
-	accepted: T[];
-	rejectedCount: number;
+  accepted: T[];
+  rejectedCount: number;
 }
 
 /**
  * Cap an incoming file selection against the batch limit, accounting for
  * items already staged. Pure so the drop/browse/camera paths share one rule.
  */
-export function acceptUploadBatch<T>(
-	existingCount: number,
-	items: T[],
-): BatchAcceptResult<T> {
-	const room = Math.max(0, MAX_UPLOAD_BATCH - existingCount);
-	return {
-		accepted: items.slice(0, room),
-		rejectedCount: Math.max(0, items.length - room),
-	};
+export function acceptUploadBatch<T>(existingCount: number, items: T[]): BatchAcceptResult<T> {
+  const room = Math.max(0, MAX_UPLOAD_BATCH - existingCount);
+  return {
+    accepted: items.slice(0, room),
+    rejectedCount: Math.max(0, items.length - room),
+  };
 }

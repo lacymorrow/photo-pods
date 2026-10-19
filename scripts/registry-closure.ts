@@ -51,7 +51,7 @@ function resolveImport(from: string, spec: string): string | null {
   const candidates = [
     base,
     ...exts.map((e) => base + e),
-    ...exts.map((e) => join(base, "index" + e)),
+    ...exts.map((e) => join(base, `index${e}`)),
   ];
   for (const c of candidates) {
     const full = join(root, c);
