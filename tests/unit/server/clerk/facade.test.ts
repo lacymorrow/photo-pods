@@ -104,9 +104,9 @@ describe("clerk facade", () => {
       );
     });
 
-    it("defaults next to the dashboard and reads FormData too", async () => {
+    it("defaults next to /pods and reads FormData too", async () => {
       const { clerkSignIn } = await loadFacade();
-      await expect(clerkSignIn()).rejects.toThrow("NEXT_REDIRECT:/sign-in?next=%2Fdashboard");
+      await expect(clerkSignIn()).rejects.toThrow("NEXT_REDIRECT:/sign-in?next=%2Fpods");
       const form = new FormData();
       form.set("callbackUrl", "/settings");
       await expect(clerkSignIn(undefined, form)).rejects.toThrow(
