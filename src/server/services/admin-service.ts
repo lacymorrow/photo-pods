@@ -97,15 +97,23 @@ export async function isAdmin({
   //     It still is not Photopods admin, which is what this function answers
   //     for `/admin/*` and the moderation queue.
   //
-  // Nor was the branch dead: `PAYLOAD` is on whenever `PAYLOAD_SECRET` or
-  // `APP_SECRET` is set (`src/config/features-table.ts`), and production sets
-  // `APP_SECRET`, so `getPayloadClient()` does not short-circuit on the flag
-  // there. The only thing that kept the grant from being reachable in
-  // production was Payload failing to initialize at runtime — `/cms-api/users`
-  // answered 500 "There was an error initializing Payload" on 2026-10-20 — and
-  // the old `catch` swallowed that into a false. Fail-closed by accident.
+  // Nor was the branch dead in production: `PAYLOAD` is on whenever
+  // `PAYLOAD_SECRET` or `APP_SECRET` is set (`src/config/features-table.ts`),
+  // and production sets `APP_SECRET`, so `getPayloadClient()` never
+  // short-circuited on the flag there. What kept the grant unreachable on the
+  // day it was removed was that production's database was down: the Supabase
+  // tenant answered `tenant/user not found`, `PAYLOAD` also
+  // `requires: ["DATABASE"]`, and `/cms-api/users` returned 500 "There was an
+  // error initializing Payload". The old `catch` swallowed that into a false.
+  // That is an outage, not a control — the same outage fail-closes the three
+  // grants above, which all need the `users` lookup. Whenever production's
+  // database was healthy, this grant was live.
   //
-  // Grant admin with `ADMIN_EMAIL`, `users.role`, or an RBAC `system:admin`.
+  // Grant admin with `ADMIN_EMAIL`/`ADMIN_DOMAINS` or `users.role`. The RBAC
+  // path above is reachable but unseeded: nothing in the repo writes a
+  // `system`/`admin` permission row, and `hasPermission` compares resource and
+  // action by exact equality, so the `"*"` rows `configureSetup` would write
+  // never match (verified in review, LAC-5016).
 
   return false;
 }
