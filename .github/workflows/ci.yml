@@ -4,7 +4,10 @@
 #   - Cheap jobs (typecheck, lint, unit) run on every PR.
 #   - Expensive jobs (integration, build, e2e, docs-links) run on pushes to main
 #     and on PRs labeled "ci:full". Add the label when a change touches auth,
-#     payments, the build pipeline, or docs routing.
+#     payments, the build pipeline, or docs routing. The label is read on push,
+#     so label first or push again after labelling; to run them right now on an
+#     existing commit, use the workflow_dispatch below ("Run workflow" in the
+#     Actions tab, or `gh workflow run CI --ref <branch>`).
 #   - Locally verified work (upstream syncs, agent PRs) runs `bun run verify`,
 #     pastes the summary in the PR, and commits with "[skip ci]".
 #
@@ -22,21 +25,27 @@ name: CI
 on:
   pull_request:
     branches: [main]
-    # `labeled` is required for the "ci:full" escape hatch below. Without it the
-    # default set (opened, synchronize, reopened) means adding the label never
-    # re-triggers CI, and re-running an existing run re-evaluates the `if:`
-    # guards against the original unlabeled payload.
-    types: [opened, synchronize, reopened, labeled]
   push:
     branches: [main]
+  # The on-demand escape hatch for the expensive suite. Deliberately NOT a
+  # `labeled` trigger: a label event mints a fresh check run for every job,
+  # including `ci-pass`, and GitHub counts a job skipped by an `if:` as Success
+  # for required status checks. So gating jobs on the label action produced a
+  # `ci-pass` of conclusion `skipped` that superseded a real red — a green gate
+  # over nothing. Adding a label to an already-labelled PR also re-billed the
+  # whole suite. Pushing a commit still honours the `ci:full` label below; this
+  # covers "run the full suite now without pushing".
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Run the expensive suite (integration, build, e2e, docs-links)
+        type: boolean
+        default: true
 
-# Cancel in-flight PR runs when new commits arrive; never cancel main pushes,
-# and never cancel because a label was added — the new commits case is the only
-# one where the in-flight run is testing something stale. Labelling a PR mid-run
-# used to kill it and report `CI pass` as cancelled, which reads as red.
+# Cancel in-flight PR runs when new commits arrive; never cancel main pushes.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'labeled' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -50,13 +59,6 @@ env:
 jobs:
   typecheck:
     name: TypeScript
-    # Skip on a `labeled` event unless the label is ci:full. Any other label
-    # would otherwise re-bill this whole job for a SHA it already passed
-    # (CLAUDE.md: Actions minutes are billed here). It must still run for
-    # ci:full, because `build` needs [typecheck, lint] and `test-e2e` needs
-    # test-unit — a skipped dependency skips its dependents, which would
-    # defeat the escape hatch this event exists to trigger.
-    if: ${{ github.event_name == 'push' || github.event.action != 'labeled' || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -69,13 +71,6 @@ jobs:
 
   lint:
     name: Lint (biome + eslint + prettier)
-    # Skip on a `labeled` event unless the label is ci:full. Any other label
-    # would otherwise re-bill this whole job for a SHA it already passed
-    # (CLAUDE.md: Actions minutes are billed here). It must still run for
-    # ci:full, because `build` needs [typecheck, lint] and `test-e2e` needs
-    # test-unit — a skipped dependency skips its dependents, which would
-    # defeat the escape hatch this event exists to trigger.
-    if: ${{ github.event_name == 'push' || github.event.action != 'labeled' || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -88,13 +83,6 @@ jobs:
 
   test-unit:
     name: Unit tests (mocked db)
-    # Skip on a `labeled` event unless the label is ci:full. Any other label
-    # would otherwise re-bill this whole job for a SHA it already passed
-    # (CLAUDE.md: Actions minutes are billed here). It must still run for
-    # ci:full, because `build` needs [typecheck, lint] and `test-e2e` needs
-    # test-unit — a skipped dependency skips its dependents, which would
-    # defeat the escape hatch this event exists to trigger.
-    if: ${{ github.event_name == 'push' || github.event.action != 'labeled' || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -110,7 +98,7 @@ jobs:
 
   test-integration:
     name: Integration tests (real Postgres)
-    if: ${{ github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.full) || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -142,7 +130,7 @@ jobs:
 
   build:
     name: Production build
-    if: ${{ github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.full) || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     needs: [typecheck, lint]
@@ -154,7 +142,10 @@ jobs:
       # job had never actually run on a PR to show that: it needs [typecheck,
       # lint], lint was red on main, and a skipped dependency skips its
       # dependents — so the failure sat latent behind the lint red (LAC-4923).
-      APP_SECRET: ci-only-secret-do-not-use-in-prod
+      # Per-run value: build and run happen in the same job, so nothing needs it
+      # stable, and a fixed literal would be a publicly-derivable key that could
+      # be copied into a real env or sign cookies in an uploaded artifact.
+      APP_SECRET: ci-${{ github.run_id }}-${{ github.run_attempt }}
       AUTH_SECRET: ci-only-secret-do-not-use-in-prod
       SKIP_ENV_VALIDATION: "1"
     steps:
@@ -167,7 +158,7 @@ jobs:
 
   test-e2e:
     name: E2E (Playwright)
-    if: ${{ github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.full) || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     runs-on: ubuntu-latest
     # Includes a production build (~15-25 min) before the Playwright run —
     # keep this above the build job's timeout plus test time.
@@ -192,8 +183,10 @@ jobs:
       USE_EXTERNAL_DB: "1"
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/shipkit_e2e
       # Builds in-job (see the build step below), so it needs APP_SECRET for the
-      # same reason the build job does.
-      APP_SECRET: ci-only-secret-do-not-use-in-prod
+      # same reason the build job does, and per-run for the same reason. Matters
+      # more here: playwright-report is uploaded on failure with 7-day
+      # retention, so any captured cookie is signed with a throwaway key.
+      APP_SECRET: ci-${{ github.run_id }}-${{ github.run_attempt }}
       AUTH_SECRET: ci-only-secret-do-not-use-in-prod
       SKIP_ENV_VALIDATION: "1"
       CI: "true"
@@ -226,7 +219,7 @@ jobs:
   # when the provider was introduced. See docs-site/README.md.
   docs-links:
     name: Docs link check (Holocron build)
-    if: ${{ github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.full) || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -249,12 +242,7 @@ jobs:
     name: CI pass
     runs-on: ubuntu-latest
     needs: [typecheck, lint, test-unit, test-integration, build, test-e2e, docs-links]
-    # `always()` so skipped jobs don't block the aggregate. The label clause
-    # matters: on a `labeled` event that is NOT ci:full every job above skips,
-    # and an unguarded `always()` would then report this required check as
-    # green having run nothing. Skipping it instead leaves the real conclusion
-    # from the opened/synchronize run standing.
-    if: ${{ always() && (github.event_name == 'push' || github.event.action != 'labeled' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}
+    if: always()
     steps:
       # Skipped jobs (expensive suite not requested) are fine; failures and
       # cancellations are not.
