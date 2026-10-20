@@ -147,6 +147,14 @@ jobs:
     timeout-minutes: 25
     needs: [typecheck, lint]
     env:
+      # `next build` runs with NODE_ENV=production, and src/config/secrets.ts
+      # refuses to derive a master secret from the public BASE_URL there. It
+      # wants APP_SECRET, or all three of AUTH_SECRET/PAYLOAD_SECRET/
+      # BETTER_AUTH_SECRET; AUTH_SECRET alone throws at next.config load. This
+      # job had never actually run on a PR to show that: it needs [typecheck,
+      # lint], lint was red on main, and a skipped dependency skips its
+      # dependents — so the failure sat latent behind the lint red (LAC-4923).
+      APP_SECRET: ci-only-secret-do-not-use-in-prod
       AUTH_SECRET: ci-only-secret-do-not-use-in-prod
       SKIP_ENV_VALIDATION: "1"
     steps:
@@ -183,6 +191,9 @@ jobs:
       E2E_SKIP_DB_SETUP: "0"
       USE_EXTERNAL_DB: "1"
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/shipkit_e2e
+      # Builds in-job (see the build step below), so it needs APP_SECRET for the
+      # same reason the build job does.
+      APP_SECRET: ci-only-secret-do-not-use-in-prod
       AUTH_SECRET: ci-only-secret-do-not-use-in-prod
       SKIP_ENV_VALIDATION: "1"
       CI: "true"
