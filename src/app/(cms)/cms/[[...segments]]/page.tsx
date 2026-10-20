@@ -1,10 +1,12 @@
-/* THIS FILE WAS GENERATED AUTOMATICALLY BY PAYLOAD. */
-/* DO NOT MODIFY IT BECAUSE IT COULD BE REWRITTEN AT ANY TIME. */
-
-import config from "@payload-config";
-import { generatePageMetadata, RootPage } from "@payloadcms/next/views";
+/**
+ * Payload's admin panel at /cms, behind the Payload feature flag.
+ *
+ * The generated views live in ./payload-admin-page. See
+ * `(cms)/_lib/payload-route` for why they are not imported statically.
+ */
 import type { Metadata } from "next";
-import { importMap } from "../importMap";
+import { notFound } from "next/navigation";
+import { env } from "@/env";
 
 interface Args {
   params: Promise<{
@@ -13,10 +15,23 @@ interface Args {
   searchParams: Promise<Record<string, string | string[]>>;
 }
 
-export const generateMetadata = ({ params, searchParams }: Args): Promise<Metadata> =>
-  generatePageMetadata({ config, params, searchParams });
+const admin = () => import("./payload-admin-page");
 
-const Page = ({ params, searchParams }: Args) =>
-  RootPage({ config, params, searchParams, importMap });
+export const generateMetadata = async (args: Args): Promise<Metadata> => {
+  if (!env.NEXT_PUBLIC_FEATURE_PAYLOAD_ENABLED) {
+    return { title: "Not Found" };
+  }
+
+  return (await admin()).generateMetadata(args);
+};
+
+const Page = async (args: Args) => {
+  if (!env.NEXT_PUBLIC_FEATURE_PAYLOAD_ENABLED) {
+    notFound();
+  }
+
+  const { default: PayloadAdminPage } = await admin();
+  return PayloadAdminPage(args);
+};
 
 export default Page;

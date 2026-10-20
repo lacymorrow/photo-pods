@@ -490,9 +490,19 @@
           "target": "~/src/app/(cms)/cms-api/[...slug]/route.ts"
         },
         {
+          "path": "src/app/(cms)/cms-api/[...slug]/payload-rest.ts",
+          "type": "registry:page",
+          "target": "~/src/app/(cms)/cms-api/[...slug]/payload-rest.ts"
+        },
+        {
           "path": "src/app/(cms)/cms-api/graphql-playground/route.ts",
           "type": "registry:page",
           "target": "~/src/app/(cms)/cms-api/graphql-playground/route.ts"
+        },
+        {
+          "path": "src/app/(cms)/cms-api/graphql-playground/payload-playground.ts",
+          "type": "registry:page",
+          "target": "~/src/app/(cms)/cms-api/graphql-playground/payload-playground.ts"
         },
         {
           "path": "src/app/(cms)/cms-api/graphql/route.ts",
@@ -500,14 +510,29 @@
           "target": "~/src/app/(cms)/cms-api/graphql/route.ts"
         },
         {
+          "path": "src/app/(cms)/cms-api/graphql/payload-graphql.ts",
+          "type": "registry:page",
+          "target": "~/src/app/(cms)/cms-api/graphql/payload-graphql.ts"
+        },
+        {
           "path": "src/app/(cms)/cms/[[...segments]]/not-found.tsx",
           "type": "registry:page",
           "target": "~/src/app/(cms)/cms/[[...segments]]/not-found.tsx"
         },
         {
+          "path": "src/app/(cms)/cms/[[...segments]]/payload-not-found.tsx",
+          "type": "registry:page",
+          "target": "~/src/app/(cms)/cms/[[...segments]]/payload-not-found.tsx"
+        },
+        {
           "path": "src/app/(cms)/cms/[[...segments]]/page.tsx",
           "type": "registry:page",
           "target": "~/src/app/(cms)/cms/[[...segments]]/page.tsx"
+        },
+        {
+          "path": "src/app/(cms)/cms/[[...segments]]/payload-admin-page.tsx",
+          "type": "registry:page",
+          "target": "~/src/app/(cms)/cms/[[...segments]]/payload-admin-page.tsx"
         },
         {
           "path": "src/app/(cms)/cms/importMap.js",
@@ -533,6 +558,11 @@
           "path": "src/app/(cms)/layout.tsx",
           "type": "registry:page",
           "target": "~/src/app/(cms)/layout.tsx"
+        },
+        {
+          "path": "src/app/(cms)/_lib/payload-route.ts",
+          "type": "registry:file",
+          "target": "~/src/app/(cms)/_lib/payload-route.ts"
         },
         {
           "path": "src/app/(cms)/not-found.tsx",

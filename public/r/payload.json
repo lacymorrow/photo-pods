@@ -178,33 +178,63 @@
     },
     {
       "path": "src/app/(cms)/cms-api/[...slug]/route.ts",
-      "content": "/* THIS FILE WAS GENERATED AUTOMATICALLY BY PAYLOAD. */\n/* DO NOT MODIFY IT BECAUSE IT COULD BE REWRITTEN AT ANY TIME. */\nimport config from \"@payload-config\";\nimport \"@payloadcms/next/css\";\nimport {\n  REST_DELETE,\n  REST_GET,\n  REST_OPTIONS,\n  REST_PATCH,\n  REST_POST,\n  REST_PUT,\n} from \"@payloadcms/next/routes\";\n\nexport const GET = REST_GET(config);\nexport const POST = REST_POST(config);\nexport const DELETE = REST_DELETE(config);\nexport const PATCH = REST_PATCH(config);\nexport const PUT = REST_PUT(config);\nexport const OPTIONS = REST_OPTIONS(config);\n",
+      "content": "/**\n * Payload's REST API, behind the Payload feature flag.\n *\n * The generated handlers live in ./payload-rest. See\n * `(cms)/_lib/payload-route` for why they are not imported statically.\n */\nimport { payloadRoute } from \"@/app/(cms)/_lib/payload-route\";\n\nconst rest = () => import(\"./payload-rest\");\n\nexport const GET = payloadRoute(async () => (await rest()).GET);\nexport const POST = payloadRoute(async () => (await rest()).POST);\nexport const DELETE = payloadRoute(async () => (await rest()).DELETE);\nexport const PATCH = payloadRoute(async () => (await rest()).PATCH);\nexport const PUT = payloadRoute(async () => (await rest()).PUT);\nexport const OPTIONS = payloadRoute(async () => (await rest()).OPTIONS);\n",
       "type": "registry:page",
       "target": "~/src/app/(cms)/cms-api/[...slug]/route.ts"
     },
     {
+      "path": "src/app/(cms)/cms-api/[...slug]/payload-rest.ts",
+      "content": "/**\n * Payload codegen output, moved out of route.ts unchanged.\n *\n * route.ts is now a feature-flag guard that reaches this module through a\n * dynamic import, so a build with Payload off never loads it. See\n * `(cms)/_lib/payload-route` for why. If Payload regenerates route.ts, move\n * the new body back in here and restore the guard.\n */\n/* THIS FILE WAS GENERATED AUTOMATICALLY BY PAYLOAD. */\n/* DO NOT MODIFY IT BECAUSE IT COULD BE REWRITTEN AT ANY TIME. */\nimport config from \"@payload-config\";\nimport \"@payloadcms/next/css\";\nimport {\n  REST_DELETE,\n  REST_GET,\n  REST_OPTIONS,\n  REST_PATCH,\n  REST_POST,\n  REST_PUT,\n} from \"@payloadcms/next/routes\";\n\nexport const GET = REST_GET(config);\nexport const POST = REST_POST(config);\nexport const DELETE = REST_DELETE(config);\nexport const PATCH = REST_PATCH(config);\nexport const PUT = REST_PUT(config);\nexport const OPTIONS = REST_OPTIONS(config);\n",
+      "type": "registry:page",
+      "target": "~/src/app/(cms)/cms-api/[...slug]/payload-rest.ts"
+    },
+    {
       "path": "src/app/(cms)/cms-api/graphql-playground/route.ts",
-      "content": "/* THIS FILE WAS GENERATED AUTOMATICALLY BY PAYLOAD. */\n/* DO NOT MODIFY IT BECAUSE IT COULD BE REWRITTEN AT ANY TIME. */\nimport config from \"@payload-config\";\nimport \"@payloadcms/next/css\";\nimport { GRAPHQL_PLAYGROUND_GET } from \"@payloadcms/next/routes\";\n\nexport const GET = GRAPHQL_PLAYGROUND_GET(config);\n",
+      "content": "/**\n * Payload's GraphQL playground, behind the Payload feature flag.\n *\n * The generated handler lives in ./payload-playground. See\n * `(cms)/_lib/payload-route` for why it is not imported statically.\n */\nimport { payloadRoute } from \"@/app/(cms)/_lib/payload-route\";\n\nexport const GET = payloadRoute(async () => (await import(\"./payload-playground\")).GET);\n",
       "type": "registry:page",
       "target": "~/src/app/(cms)/cms-api/graphql-playground/route.ts"
     },
     {
+      "path": "src/app/(cms)/cms-api/graphql-playground/payload-playground.ts",
+      "content": "/**\n * Payload codegen output, moved out of route.ts unchanged.\n *\n * route.ts is now a feature-flag guard that reaches this module through a\n * dynamic import, so a build with Payload off never loads it. See\n * `(cms)/_lib/payload-route` for why. If Payload regenerates route.ts, move\n * the new body back in here and restore the guard.\n */\n/* THIS FILE WAS GENERATED AUTOMATICALLY BY PAYLOAD. */\n/* DO NOT MODIFY IT BECAUSE IT COULD BE REWRITTEN AT ANY TIME. */\nimport config from \"@payload-config\";\nimport \"@payloadcms/next/css\";\nimport { GRAPHQL_PLAYGROUND_GET } from \"@payloadcms/next/routes\";\n\nexport const GET = GRAPHQL_PLAYGROUND_GET(config);\n",
+      "type": "registry:page",
+      "target": "~/src/app/(cms)/cms-api/graphql-playground/payload-playground.ts"
+    },
+    {
       "path": "src/app/(cms)/cms-api/graphql/route.ts",
-      "content": "/* THIS FILE WAS GENERATED AUTOMATICALLY BY PAYLOAD. */\n/* DO NOT MODIFY IT BECAUSE IT COULD BE REWRITTEN AT ANY TIME. */\nimport config from \"@payload-config\";\nimport { GRAPHQL_POST, REST_OPTIONS } from \"@payloadcms/next/routes\";\n\nexport const POST = GRAPHQL_POST(config);\n\nexport const OPTIONS = REST_OPTIONS(config);\n",
+      "content": "/**\n * Payload's GraphQL endpoint, behind the Payload feature flag.\n *\n * The generated handlers live in ./payload-graphql. See\n * `(cms)/_lib/payload-route` for why they are not imported statically.\n */\nimport { payloadRoute } from \"@/app/(cms)/_lib/payload-route\";\n\nconst graphql = () => import(\"./payload-graphql\");\n\nexport const POST = payloadRoute(async () => (await graphql()).POST);\nexport const OPTIONS = payloadRoute(async () => (await graphql()).OPTIONS);\n",
       "type": "registry:page",
       "target": "~/src/app/(cms)/cms-api/graphql/route.ts"
     },
     {
+      "path": "src/app/(cms)/cms-api/graphql/payload-graphql.ts",
+      "content": "/**\n * Payload codegen output, moved out of route.ts unchanged.\n *\n * route.ts is now a feature-flag guard that reaches this module through a\n * dynamic import, so a build with Payload off never loads it. See\n * `(cms)/_lib/payload-route` for why. If Payload regenerates route.ts, move\n * the new body back in here and restore the guard.\n */\n/* THIS FILE WAS GENERATED AUTOMATICALLY BY PAYLOAD. */\n/* DO NOT MODIFY IT BECAUSE IT COULD BE REWRITTEN AT ANY TIME. */\nimport config from \"@payload-config\";\nimport { GRAPHQL_POST, REST_OPTIONS } from \"@payloadcms/next/routes\";\n\nexport const POST = GRAPHQL_POST(config);\n\nexport const OPTIONS = REST_OPTIONS(config);\n",
+      "type": "registry:page",
+      "target": "~/src/app/(cms)/cms-api/graphql/payload-graphql.ts"
+    },
+    {
       "path": "src/app/(cms)/cms/[[...segments]]/not-found.tsx",
-      "content": "/* THIS FILE WAS GENERATED AUTOMATICALLY BY PAYLOAD. */\n/* DO NOT MODIFY IT BECAUSE IT COULD BE REWRITTEN AT ANY TIME. */\n\nimport config from \"@payload-config\";\nimport { generatePageMetadata, NotFoundPage } from \"@payloadcms/next/views\";\nimport type { Metadata } from \"next\";\nimport { importMap } from \"../importMap\";\n\ninterface Args {\n  params: Promise<{\n    segments: string[];\n  }>;\n  searchParams: Promise<Record<string, string | string[]>>;\n}\n\nexport const generateMetadata = ({ params, searchParams }: Args): Promise<Metadata> =>\n  generatePageMetadata({ config, params, searchParams });\n\nconst NotFound = ({ params, searchParams }: Args) =>\n  NotFoundPage({ config, params, searchParams, importMap });\n\nexport default NotFound;\n",
+      "content": "/**\n * The 404 boundary for /cms, behind the Payload feature flag.\n *\n * This file matters as much as page.tsx: it is the boundary `notFound()` in\n * page.tsx renders into, and Payload's generated version imports the CMS too.\n * Left unguarded it would turn a disabled-Payload 404 straight back into the\n * 500 this guard exists to remove.\n *\n * With Payload off, /cms is simply not a route this app serves, so it gets the\n * same 404 page as any other unknown URL.\n */\nimport type { Metadata } from \"next\";\nimport { NotFoundPage } from \"@/components/pages/not-found-page\";\nimport { env } from \"@/env\";\n\ninterface Args {\n  params: Promise<{\n    segments: string[];\n  }>;\n  searchParams: Promise<Record<string, string | string[]>>;\n}\n\nconst payloadNotFound = () => import(\"./payload-not-found\");\n\nexport const generateMetadata = async (args: Args): Promise<Metadata> => {\n  if (!env.NEXT_PUBLIC_FEATURE_PAYLOAD_ENABLED) {\n    return { title: \"Not Found\" };\n  }\n\n  return (await payloadNotFound()).generateMetadata(args);\n};\n\nconst NotFound = async (args: Args) => {\n  if (!env.NEXT_PUBLIC_FEATURE_PAYLOAD_ENABLED) {\n    return <NotFoundPage />;\n  }\n\n  const { default: PayloadNotFound } = await payloadNotFound();\n  return PayloadNotFound(args);\n};\n\nexport default NotFound;\n",
       "type": "registry:page",
       "target": "~/src/app/(cms)/cms/[[...segments]]/not-found.tsx"
     },
     {
+      "path": "src/app/(cms)/cms/[[...segments]]/payload-not-found.tsx",
+      "content": "/**\n * Payload codegen output, moved out of not-found.tsx unchanged.\n *\n * not-found.tsx is now a feature-flag guard that reaches this module through a\n * dynamic import, so a build with Payload off never loads it. See\n * `(cms)/_lib/payload-route` for why. If Payload regenerates not-found.tsx, move\n * the new body back in here and restore the guard.\n */\n/* THIS FILE WAS GENERATED AUTOMATICALLY BY PAYLOAD. */\n/* DO NOT MODIFY IT BECAUSE IT COULD BE REWRITTEN AT ANY TIME. */\n\nimport config from \"@payload-config\";\nimport { generatePageMetadata, NotFoundPage } from \"@payloadcms/next/views\";\nimport type { Metadata } from \"next\";\nimport { importMap } from \"../importMap\";\n\ninterface Args {\n  params: Promise<{\n    segments: string[];\n  }>;\n  searchParams: Promise<Record<string, string | string[]>>;\n}\n\nexport const generateMetadata = ({ params, searchParams }: Args): Promise<Metadata> =>\n  generatePageMetadata({ config, params, searchParams });\n\nconst NotFound = ({ params, searchParams }: Args) =>\n  NotFoundPage({ config, params, searchParams, importMap });\n\nexport default NotFound;\n",
+      "type": "registry:page",
+      "target": "~/src/app/(cms)/cms/[[...segments]]/payload-not-found.tsx"
+    },
+    {
       "path": "src/app/(cms)/cms/[[...segments]]/page.tsx",
-      "content": "/* THIS FILE WAS GENERATED AUTOMATICALLY BY PAYLOAD. */\n/* DO NOT MODIFY IT BECAUSE IT COULD BE REWRITTEN AT ANY TIME. */\n\nimport config from \"@payload-config\";\nimport { generatePageMetadata, RootPage } from \"@payloadcms/next/views\";\nimport type { Metadata } from \"next\";\nimport { importMap } from \"../importMap\";\n\ninterface Args {\n  params: Promise<{\n    segments: string[];\n  }>;\n  searchParams: Promise<Record<string, string | string[]>>;\n}\n\nexport const generateMetadata = ({ params, searchParams }: Args): Promise<Metadata> =>\n  generatePageMetadata({ config, params, searchParams });\n\nconst Page = ({ params, searchParams }: Args) =>\n  RootPage({ config, params, searchParams, importMap });\n\nexport default Page;\n",
+      "content": "/**\n * Payload's admin panel at /cms, behind the Payload feature flag.\n *\n * The generated views live in ./payload-admin-page. See\n * `(cms)/_lib/payload-route` for why they are not imported statically.\n */\nimport type { Metadata } from \"next\";\nimport { notFound } from \"next/navigation\";\nimport { env } from \"@/env\";\n\ninterface Args {\n  params: Promise<{\n    segments: string[];\n  }>;\n  searchParams: Promise<Record<string, string | string[]>>;\n}\n\nconst admin = () => import(\"./payload-admin-page\");\n\nexport const generateMetadata = async (args: Args): Promise<Metadata> => {\n  if (!env.NEXT_PUBLIC_FEATURE_PAYLOAD_ENABLED) {\n    return { title: \"Not Found\" };\n  }\n\n  return (await admin()).generateMetadata(args);\n};\n\nconst Page = async (args: Args) => {\n  if (!env.NEXT_PUBLIC_FEATURE_PAYLOAD_ENABLED) {\n    notFound();\n  }\n\n  const { default: PayloadAdminPage } = await admin();\n  return PayloadAdminPage(args);\n};\n\nexport default Page;\n",
       "type": "registry:page",
       "target": "~/src/app/(cms)/cms/[[...segments]]/page.tsx"
+    },
+    {
+      "path": "src/app/(cms)/cms/[[...segments]]/payload-admin-page.tsx",
+      "content": "/**\n * Payload codegen output, moved out of page.tsx unchanged.\n *\n * page.tsx is now a feature-flag guard that reaches this module through a\n * dynamic import, so a build with Payload off never loads it. See\n * `(cms)/_lib/payload-route` for why. If Payload regenerates page.tsx, move\n * the new body back in here and restore the guard.\n */\n/* THIS FILE WAS GENERATED AUTOMATICALLY BY PAYLOAD. */\n/* DO NOT MODIFY IT BECAUSE IT COULD BE REWRITTEN AT ANY TIME. */\n\nimport config from \"@payload-config\";\nimport { generatePageMetadata, RootPage } from \"@payloadcms/next/views\";\nimport type { Metadata } from \"next\";\nimport { importMap } from \"../importMap\";\n\ninterface Args {\n  params: Promise<{\n    segments: string[];\n  }>;\n  searchParams: Promise<Record<string, string | string[]>>;\n}\n\nexport const generateMetadata = ({ params, searchParams }: Args): Promise<Metadata> =>\n  generatePageMetadata({ config, params, searchParams });\n\nconst Page = ({ params, searchParams }: Args) =>\n  RootPage({ config, params, searchParams, importMap });\n\nexport default Page;\n",
+      "type": "registry:page",
+      "target": "~/src/app/(cms)/cms/[[...segments]]/payload-admin-page.tsx"
     },
     {
       "path": "src/app/(cms)/cms/importMap.js",
@@ -235,6 +265,12 @@
       "content": "/**\n * Payload CMS route group layout.\n *\n * When Payload is disabled (no DATABASE_URL / PAYLOAD_SECRET), this layout\n * renders children directly — no @payloadcms packages are imported.\n *\n * When Payload is enabled, the heavy imports (CSS, RootLayout, config) are\n * loaded via a dynamic import of ./payload-root-layout so that Turbopack\n * can tree-shake them out of disabled builds and externalised packages\n * don't blow up on Vercel at runtime.\n */\n\nimport type React from \"react\";\nimport { env } from \"@/env\";\n\ninterface Args {\n  children: React.ReactNode;\n}\n\nconst Layout = async ({ children }: Args) => {\n  if (!env.NEXT_PUBLIC_FEATURE_PAYLOAD_ENABLED) {\n    return <>{children}</>;\n  }\n\n  const { default: PayloadRootLayout } = await import(\"./payload-root-layout\");\n  return <PayloadRootLayout>{children}</PayloadRootLayout>;\n};\n\nexport default Layout;\n",
       "type": "registry:page",
       "target": "~/src/app/(cms)/layout.tsx"
+    },
+    {
+      "path": "src/app/(cms)/_lib/payload-route.ts",
+      "content": "import { env } from \"@/env\";\n\n/**\n * Feature guard for Payload's generated route handlers.\n *\n * Payload's codegen writes `/cms-api/*` as a static import of `@payload-config`\n * plus `@payloadcms/next/routes`, with no notion of the feature flag. When\n * Payload is off that shape is wrong twice over:\n *\n * - The handler still boots the CMS on every request, so a deployment without\n *   a working Payload answers 500 instead of 404. That is LAC-5015: production\n *   served `{\"message\":\"There was an error initializing Payload\"}` from\n *   `/cms-api/users` for months while the route looked like it existed.\n * - `withPayloadConfig` (`src/config/nextjs/with-payload.ts`) only applies\n *   `withPayload` when the flag is on, so a disabled build would keep the\n *   externalised `@payloadcms/*` packages without the Next config that makes\n *   them loadable.\n *\n * So the entrypoint keeps only this guard and loads its generated body through\n * `load` once the flag is on. `(cms)/layout.tsx` already uses the same shape\n * for the admin layout.\n *\n * The 404 is bodyless on purpose: with Payload off this endpoint genuinely\n * does not exist, and that is exactly what Next.js answers for a route that\n * was never defined. An error body would imply the CMS is there but unwell.\n */\nexport const payloadRoute =\n  <Args extends unknown[]>(load: () => Promise<(...args: Args) => Promise<Response>>) =>\n  async (...args: Args): Promise<Response> => {\n    if (!env.NEXT_PUBLIC_FEATURE_PAYLOAD_ENABLED) {\n      return new Response(null, { status: 404 });\n    }\n\n    const handler = await load();\n    return handler(...args);\n  };\n",
+      "type": "registry:file",
+      "target": "~/src/app/(cms)/_lib/payload-route.ts"
     },
     {
       "path": "src/app/(cms)/not-found.tsx",
