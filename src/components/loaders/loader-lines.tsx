@@ -104,7 +104,6 @@ export const LoaderLines = ({
         ))}
       </div>
 
-      {/* eslint-disable-next-line react/no-unknown-property -- styled-jsx attributes */}
       <style jsx>{`
         .loader {
           position: relative;

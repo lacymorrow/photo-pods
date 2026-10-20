@@ -29,16 +29,34 @@ const registry = JSON.parse(readFileSync(join(root, "registry.json"), "utf8")) a
 const items = new Map(registry.items.map((i) => [i.name, i]));
 const only = process.argv.slice(2);
 
-async function bonesFiles(): Promise<Set<string>> {
+/**
+ * The file list for shipkit-io/bones, which this analysis treats as "provided
+ * upstream, so an item need not ship it".
+ *
+ * Returns null when that list cannot be obtained. The caller skips the analysis
+ * rather than failing: without the Bones side every file looks unprovided, so
+ * the output would be noise, not a finding. This is the normal case in CI,
+ * where `gh` has no token for a different org and the call exits 4. Fixing that
+ * by handing CI a cross-org PAT would widen the secret surface for an advisory
+ * check, so the check stays local-only by design — run it with `gh auth login`,
+ * or point `BONES_DIR` at a clone.
+ */
+async function bonesFiles(): Promise<Set<string> | null> {
   const dir = process.env.BONES_DIR;
   if (dir) {
     const ref = process.env.BONES_REF ?? "origin/main";
     const out = await Bun.$`git -C ${dir} ls-tree -r ${ref} --name-only`.text();
     return new Set(out.split("\n").filter(Boolean));
   }
-  const out =
-    await Bun.$`gh api repos/shipkit-io/bones/git/trees/main?recursive=1 --jq '.tree[].path'`.text();
-  return new Set(out.split("\n").filter(Boolean));
+  try {
+    const out =
+      await Bun.$`gh api repos/shipkit-io/bones/git/trees/main?recursive=1 --jq '.tree[].path'`
+        .quiet()
+        .text();
+    return new Set(out.split("\n").filter(Boolean));
+  } catch {
+    return null;
+  }
 }
 
 const exts = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".css", ".json"];
@@ -51,7 +69,7 @@ function resolveImport(from: string, spec: string): string | null {
   const candidates = [
     base,
     ...exts.map((e) => base + e),
-    ...exts.map((e) => join(base, "index" + e)),
+    ...exts.map((e) => join(base, `index${e}`)),
   ];
   for (const c of candidates) {
     const full = join(root, c);
@@ -104,6 +122,14 @@ function shippedBy(
 }
 
 const bones = await bonesFiles();
+if (!bones) {
+  console.log(
+    "registry-closure: skipped — could not read the shipkit-io/bones file list.\n" +
+      "  Needs `gh` authenticated against that repo, or BONES_DIR pointing at a clone.\n" +
+      "  Run it locally to analyse item closure; see the comment on bonesFiles()."
+  );
+  process.exit(0);
+}
 const need = new Map<string, string[]>();
 let failures = 0;
 for (const item of registry.items) {

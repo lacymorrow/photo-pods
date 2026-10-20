@@ -4,7 +4,10 @@
 #   - Cheap jobs (typecheck, lint, unit) run on every PR.
 #   - Expensive jobs (integration, build, e2e, docs-links) run on pushes to main
 #     and on PRs labeled "ci:full". Add the label when a change touches auth,
-#     payments, the build pipeline, or docs routing.
+#     payments, the build pipeline, or docs routing. The label is read on push,
+#     so label first or push again after labelling; to run them right now on an
+#     existing commit, use the workflow_dispatch below ("Run workflow" in the
+#     Actions tab, or `gh workflow run CI --ref <branch>`).
 #   - Locally verified work (upstream syncs, agent PRs) runs `bun run verify`,
 #     pastes the summary in the PR, and commits with "[skip ci]".
 #
@@ -24,6 +27,20 @@ on:
     branches: [main]
   push:
     branches: [main]
+  # The on-demand escape hatch for the expensive suite. Deliberately NOT a
+  # `labeled` trigger: a label event mints a fresh check run for every job,
+  # including `ci-pass`, and GitHub counts a job skipped by an `if:` as Success
+  # for required status checks. So gating jobs on the label action produced a
+  # `ci-pass` of conclusion `skipped` that superseded a real red — a green gate
+  # over nothing. Adding a label to an already-labelled PR also re-billed the
+  # whole suite. Pushing a commit still honours the `ci:full` label below; this
+  # covers "run the full suite now without pushing".
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Run the expensive suite (integration, build, e2e, docs-links)
+        type: boolean
+        default: true
 
 # Cancel in-flight PR runs when new commits arrive; never cancel main pushes.
 concurrency:
@@ -81,7 +98,7 @@ jobs:
 
   test-integration:
     name: Integration tests (real Postgres)
-    if: ${{ github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.full) || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -113,11 +130,22 @@ jobs:
 
   build:
     name: Production build
-    if: ${{ github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.full) || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     needs: [typecheck, lint]
     env:
+      # `next build` runs with NODE_ENV=production, and src/config/secrets.ts
+      # refuses to derive a master secret from the public BASE_URL there. It
+      # wants APP_SECRET, or all three of AUTH_SECRET/PAYLOAD_SECRET/
+      # BETTER_AUTH_SECRET; AUTH_SECRET alone throws at next.config load. This
+      # job had never actually run on a PR to show that: it needs [typecheck,
+      # lint], lint was red on main, and a skipped dependency skips its
+      # dependents — so the failure sat latent behind the lint red (LAC-4923).
+      # Per-run value: build and run happen in the same job, so nothing needs it
+      # stable, and a fixed literal would be a publicly-derivable key that could
+      # be copied into a real env or sign cookies in an uploaded artifact.
+      APP_SECRET: ci-${{ github.run_id }}-${{ github.run_attempt }}
       AUTH_SECRET: ci-only-secret-do-not-use-in-prod
       SKIP_ENV_VALIDATION: "1"
     steps:
@@ -130,7 +158,7 @@ jobs:
 
   test-e2e:
     name: E2E (Playwright)
-    if: ${{ github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.full) || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     runs-on: ubuntu-latest
     # Includes a production build (~15-25 min) before the Playwright run —
     # keep this above the build job's timeout plus test time.
@@ -154,6 +182,11 @@ jobs:
       E2E_SKIP_DB_SETUP: "0"
       USE_EXTERNAL_DB: "1"
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/shipkit_e2e
+      # Builds in-job (see the build step below), so it needs APP_SECRET for the
+      # same reason the build job does, and per-run for the same reason. Matters
+      # more here: playwright-report is uploaded on failure with 7-day
+      # retention, so any captured cookie is signed with a throwaway key.
+      APP_SECRET: ci-${{ github.run_id }}-${{ github.run_attempt }}
       AUTH_SECRET: ci-only-secret-do-not-use-in-prod
       SKIP_ENV_VALIDATION: "1"
       CI: "true"
@@ -186,7 +219,7 @@ jobs:
   # when the provider was introduced. See docs-site/README.md.
   docs-links:
     name: Docs link check (Holocron build)
-    if: ${{ github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.full) || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

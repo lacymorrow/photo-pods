@@ -16,11 +16,27 @@ Ask me the five questions from the file one at a time, with the recommended answ
 ```
 
 <p>
-  <a href="claude-cli://open?q=Install%20ShipKit%20for%20me.%0A%0ARead%20https%3A%2F%2Fraw.githubusercontent.com%2Fshipkit-io%2Fbones%2Fmain%2Fdocs%2Fagents%2Finstall.md%20and%20follow%20it%20exactly.%20If%20a%20step%20is%20not%20in%20that%20file%2C%20do%20not%20do%20it.%0A%0AAsk%20me%20the%20five%20questions%20from%20the%20file%20one%20at%20a%20time%2C%20with%20the%20recommended%20answer%20first.%20If%20I%20say%20%22defaults%22%2C%20skip%20straight%20to%20the%20plan.%20Show%20me%20the%20exact%20commands%20before%20you%20run%20anything%20and%20wait%20for%20my%20yes.%20Do%20not%20ask%20me%20to%20paste%20secrets%20into%20this%20chat%3A%20shadcn%20writes%20empty%20keys%20to%20.env.local%2C%20and%20you%20tell%20me%20where%20each%20value%20comes%20from.%20Touch%20only%20.env.local%2C%20the%20%22shipkit%22%20block%20in%20package.json%2C%20and%20files%20the%20CLI%20or%20shadcn%20created.%20When%20it%20is%20done%2C%20run%20the%20verify%20step%20and%20show%20me%20which%20features%20are%20on.">
+  {/*
+    The hrefs below are MDX expressions, not plain string attributes, on
+    purpose. Holocron's link checker treats every scheme except
+    http(s)/mailto/tel as an internal page path, so a literal
+    href="claude-cli://..." fails the docs-links CI job as a broken link. It
+    skips non-literal href attributes, and both renderers emit the same
+    anchor either way.
+  */}
+  <a
+    href={
+      "claude-cli://open?q=Install%20ShipKit%20for%20me.%0A%0ARead%20https%3A%2F%2Fraw.githubusercontent.com%2Fshipkit-io%2Fbones%2Fmain%2Fdocs%2Fagents%2Finstall.md%20and%20follow%20it%20exactly.%20If%20a%20step%20is%20not%20in%20that%20file%2C%20do%20not%20do%20it.%0A%0AAsk%20me%20the%20five%20questions%20from%20the%20file%20one%20at%20a%20time%2C%20with%20the%20recommended%20answer%20first.%20If%20I%20say%20%22defaults%22%2C%20skip%20straight%20to%20the%20plan.%20Show%20me%20the%20exact%20commands%20before%20you%20run%20anything%20and%20wait%20for%20my%20yes.%20Do%20not%20ask%20me%20to%20paste%20secrets%20into%20this%20chat%3A%20shadcn%20writes%20empty%20keys%20to%20.env.local%2C%20and%20you%20tell%20me%20where%20each%20value%20comes%20from.%20Touch%20only%20.env.local%2C%20the%20%22shipkit%22%20block%20in%20package.json%2C%20and%20files%20the%20CLI%20or%20shadcn%20created.%20When%20it%20is%20done%2C%20run%20the%20verify%20step%20and%20show%20me%20which%20features%20are%20on."
+    }
+  >
     Open in Claude Code
   </a>
   {" · "}
-  <a href="cursor://anysphere.cursor-deeplink/prompt?text=Install%20ShipKit%20for%20me.%0A%0ARead%20https%3A%2F%2Fraw.githubusercontent.com%2Fshipkit-io%2Fbones%2Fmain%2Fdocs%2Fagents%2Finstall.md%20and%20follow%20it%20exactly.%20If%20a%20step%20is%20not%20in%20that%20file%2C%20do%20not%20do%20it.%0A%0AAsk%20me%20the%20five%20questions%20from%20the%20file%20one%20at%20a%20time%2C%20with%20the%20recommended%20answer%20first.%20If%20I%20say%20%22defaults%22%2C%20skip%20straight%20to%20the%20plan.%20Show%20me%20the%20exact%20commands%20before%20you%20run%20anything%20and%20wait%20for%20my%20yes.%20Do%20not%20ask%20me%20to%20paste%20secrets%20into%20this%20chat%3A%20shadcn%20writes%20empty%20keys%20to%20.env.local%2C%20and%20you%20tell%20me%20where%20each%20value%20comes%20from.%20Touch%20only%20.env.local%2C%20the%20%22shipkit%22%20block%20in%20package.json%2C%20and%20files%20the%20CLI%20or%20shadcn%20created.%20When%20it%20is%20done%2C%20run%20the%20verify%20step%20and%20show%20me%20which%20features%20are%20on.">
+  <a
+    href={
+      "cursor://anysphere.cursor-deeplink/prompt?text=Install%20ShipKit%20for%20me.%0A%0ARead%20https%3A%2F%2Fraw.githubusercontent.com%2Fshipkit-io%2Fbones%2Fmain%2Fdocs%2Fagents%2Finstall.md%20and%20follow%20it%20exactly.%20If%20a%20step%20is%20not%20in%20that%20file%2C%20do%20not%20do%20it.%0A%0AAsk%20me%20the%20five%20questions%20from%20the%20file%20one%20at%20a%20time%2C%20with%20the%20recommended%20answer%20first.%20If%20I%20say%20%22defaults%22%2C%20skip%20straight%20to%20the%20plan.%20Show%20me%20the%20exact%20commands%20before%20you%20run%20anything%20and%20wait%20for%20my%20yes.%20Do%20not%20ask%20me%20to%20paste%20secrets%20into%20this%20chat%3A%20shadcn%20writes%20empty%20keys%20to%20.env.local%2C%20and%20you%20tell%20me%20where%20each%20value%20comes%20from.%20Touch%20only%20.env.local%2C%20the%20%22shipkit%22%20block%20in%20package.json%2C%20and%20files%20the%20CLI%20or%20shadcn%20created.%20When%20it%20is%20done%2C%20run%20the%20verify%20step%20and%20show%20me%20which%20features%20are%20on."
+    }
+  >
     Open in Cursor
   </a>
 </p>

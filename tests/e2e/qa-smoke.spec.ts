@@ -23,47 +23,53 @@ const hasPasswords = !!(process.env.E2E_USER_A_PASSWORD && process.env.E2E_USER_
 const hasManifest = !!loadManifest();
 
 test.describe("QA infra smoke (LAC-3138)", () => {
-	test.beforeEach(() => {
-		test.skip(
-			!hasManifest,
-			"QA manifest missing — run `bun run scripts/seed-qa-fixtures.ts` first",
-		);
-		test.skip(!hasPasswords, "E2E_USER_A_PASSWORD / E2E_USER_B_PASSWORD not set");
-		test.skip(!existsSync(GPS_FIXTURE), "gps-tagged.jpg missing — run `bun run scripts/gen-e2e-media.ts gps`");
-	});
+  test.beforeEach(() => {
+    test.skip(
+      !hasManifest,
+      "QA manifest missing — run `bun run scripts/seed-qa-fixtures.ts` first"
+    );
+    test.skip(!hasPasswords, "E2E_USER_A_PASSWORD / E2E_USER_B_PASSWORD not set");
+    test.skip(
+      !existsSync(GPS_FIXTURE),
+      "gps-tagged.jpg missing — run `bun run scripts/gen-e2e-media.ts gps`"
+    );
+  });
 
-	test("A can sign in, create a public pod, upload a photo, delete the pod", async ({
-		page,
-		signIn,
-	}) => {
-		await signIn("A");
+  test("A can sign in, create a public pod, upload a photo, delete the pod", async ({
+    page,
+    signIn,
+  }) => {
+    await signIn("A");
 
-		// Create a public pod with a unique name so parallel/re-runs don't collide.
-		const podName = `smoke-${Date.now()}`;
-		await page.goto("/pods/new");
-		await page.getByLabel("Pod Name").fill(podName);
-		await page.getByLabel("Visibility").click();
-		await page.getByRole("option", { name: "Public" }).click();
-		await page.getByRole("button", { name: /create pod/i }).click();
-		await expect(page).toHaveURL(/\/pods\/[0-9a-f-]{36}/, { timeout: 20_000 });
-		const podUrl = page.url();
-		const podId = podUrl.split("/pods/")[1]?.split(/[/?#]/)[0];
-		expect(podId).toBeTruthy();
+    // Create a public pod with a unique name so parallel/re-runs don't collide.
+    const podName = `smoke-${Date.now()}`;
+    await page.goto("/pods/new");
+    await page.getByLabel("Pod Name").fill(podName);
+    await page.getByLabel("Visibility").click();
+    await page.getByRole("option", { name: "Public" }).click();
+    await page.getByRole("button", { name: /create pod/i }).click();
+    await expect(page).toHaveURL(/\/pods\/[0-9a-f-]{36}/, { timeout: 20_000 });
+    const podUrl = page.url();
+    const podId = podUrl.split("/pods/")[1]?.split(/[/?#]/)[0];
+    expect(podId).toBeTruthy();
 
-		// Upload one photo via the hidden file input (drag-drop friendly).
-		const fileInput = page.locator('input[type="file"]').first();
-		await fileInput.setInputFiles(GPS_FIXTURE);
-		// The client-side flow shows the file in a tray, then the upload
-		// button commits it. If the component auto-uploads, this still
-		// resolves because we just wait for the tile to appear.
-		await expect(
-			page.getByRole("img", { name: /gps-tagged|photo/i }).first().or(page.locator('[data-testid="photo-tile"]').first()),
-		).toBeVisible({ timeout: 45_000 });
+    // Upload one photo via the hidden file input (drag-drop friendly).
+    const fileInput = page.locator('input[type="file"]').first();
+    await fileInput.setInputFiles(GPS_FIXTURE);
+    // The client-side flow shows the file in a tray, then the upload
+    // button commits it. If the component auto-uploads, this still
+    // resolves because we just wait for the tile to appear.
+    await expect(
+      page
+        .getByRole("img", { name: /gps-tagged|photo/i })
+        .first()
+        .or(page.locator('[data-testid="photo-tile"]').first())
+    ).toBeVisible({ timeout: 45_000 });
 
-		// Delete the pod via the settings page.
-		await page.goto(`/pods/${podId}/settings`);
-		await page.getByPlaceholder(podName).fill(podName);
-		await page.getByRole("button", { name: /delete pod/i }).click();
-		await expect(page).not.toHaveURL(/\/pods\/[0-9a-f-]{36}/, { timeout: 20_000 });
-	});
+    // Delete the pod via the settings page.
+    await page.goto(`/pods/${podId}/settings`);
+    await page.getByPlaceholder(podName).fill(podName);
+    await page.getByRole("button", { name: /delete pod/i }).click();
+    await expect(page).not.toHaveURL(/\/pods\/[0-9a-f-]{36}/, { timeout: 20_000 });
+  });
 });

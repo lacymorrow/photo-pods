@@ -16,12 +16,11 @@ import { db } from "@/server/db";
 import { mediaReactions, podMedia } from "@/server/db/pods-schema";
 
 const requireDb = () => {
-	if (!db) throw new Error("Database not initialized");
-	return db;
+  if (!db) throw new Error("Database not initialized");
+  return db;
 };
 
-export const isValidReactionSlug = (slug: string): boolean =>
-	Object.hasOwn(REACTION_BY_SLUG, slug);
+export const isValidReactionSlug = (slug: string): boolean => Object.hasOwn(REACTION_BY_SLUG, slug);
 
 /**
  * Set/switch/remove the reaction for a media item.
@@ -30,37 +29,32 @@ export const isValidReactionSlug = (slug: string): boolean =>
  * this (see `services/pod-policy`).
  */
 export const setReaction = async (
-	mediaId: string,
-	userId: string,
-	reaction: string | null,
+  mediaId: string,
+  userId: string,
+  reaction: string | null
 ): Promise<{ reaction: string | null }> => {
-	const database = requireDb();
+  const database = requireDb();
 
-	if (reaction === null) {
-		await database
-			.delete(mediaReactions)
-			.where(
-				and(
-					eq(mediaReactions.mediaId, mediaId),
-					eq(mediaReactions.userId, userId),
-				),
-			);
-		return { reaction: null };
-	}
+  if (reaction === null) {
+    await database
+      .delete(mediaReactions)
+      .where(and(eq(mediaReactions.mediaId, mediaId), eq(mediaReactions.userId, userId)));
+    return { reaction: null };
+  }
 
-	if (!isValidReactionSlug(reaction)) {
-		throw new Error(`Unsupported reaction: ${reaction}`);
-	}
+  if (!isValidReactionSlug(reaction)) {
+    throw new Error(`Unsupported reaction: ${reaction}`);
+  }
 
-	await database
-		.insert(mediaReactions)
-		.values({ mediaId, userId, reaction })
-		.onConflictDoUpdate({
-			target: [mediaReactions.mediaId, mediaReactions.userId],
-			set: { reaction, createdAt: new Date() },
-		});
+  await database
+    .insert(mediaReactions)
+    .values({ mediaId, userId, reaction })
+    .onConflictDoUpdate({
+      target: [mediaReactions.mediaId, mediaReactions.userId],
+      set: { reaction, createdAt: new Date() },
+    });
 
-	return { reaction };
+  return { reaction };
 };
 
 /**
@@ -68,26 +62,27 @@ export const setReaction = async (
  * `mediaId -> { slug: count }`. Media without reactions are absent.
  */
 export const getReactionCounts = async (
-	mediaIds: string[],
+  mediaIds: string[]
 ): Promise<Record<string, ReactionCounts>> => {
-	if (mediaIds.length === 0) return {};
-	const database = requireDb();
-	const rows = await database
-		.select({
-			mediaId: mediaReactions.mediaId,
-			reaction: mediaReactions.reaction,
-			total: count(),
-		})
-		.from(mediaReactions)
-		.where(inArray(mediaReactions.mediaId, mediaIds))
-		.groupBy(mediaReactions.mediaId, mediaReactions.reaction);
+  if (mediaIds.length === 0) return {};
+  const database = requireDb();
+  const rows = await database
+    .select({
+      mediaId: mediaReactions.mediaId,
+      reaction: mediaReactions.reaction,
+      total: count(),
+    })
+    .from(mediaReactions)
+    .where(inArray(mediaReactions.mediaId, mediaIds))
+    .groupBy(mediaReactions.mediaId, mediaReactions.reaction);
 
-	const out: Record<string, ReactionCounts> = {};
-	for (const row of rows) {
-		const bucket = (out[row.mediaId] ??= {});
-		bucket[row.reaction] = Number(row.total);
-	}
-	return out;
+  const out: Record<string, ReactionCounts> = {};
+  for (const row of rows) {
+    const bucket = out[row.mediaId] ?? {};
+    out[row.mediaId] = bucket;
+    bucket[row.reaction] = Number(row.total);
+  }
+  return out;
 };
 
 /**
@@ -95,26 +90,21 @@ export const getReactionCounts = async (
  * Media the viewer has not reacted to are absent.
  */
 export const getViewerReactions = async (
-	mediaIds: string[],
-	userId: string,
+  mediaIds: string[],
+  userId: string
 ): Promise<Record<string, string>> => {
-	if (mediaIds.length === 0) return {};
-	const database = requireDb();
-	const rows = await database
-		.select({
-			mediaId: mediaReactions.mediaId,
-			reaction: mediaReactions.reaction,
-		})
-		.from(mediaReactions)
-		.where(
-			and(
-				inArray(mediaReactions.mediaId, mediaIds),
-				eq(mediaReactions.userId, userId),
-			),
-		);
-	const out: Record<string, string> = {};
-	for (const row of rows) out[row.mediaId] = row.reaction;
-	return out;
+  if (mediaIds.length === 0) return {};
+  const database = requireDb();
+  const rows = await database
+    .select({
+      mediaId: mediaReactions.mediaId,
+      reaction: mediaReactions.reaction,
+    })
+    .from(mediaReactions)
+    .where(and(inArray(mediaReactions.mediaId, mediaIds), eq(mediaReactions.userId, userId)));
+  const out: Record<string, string> = {};
+  for (const row of rows) out[row.mediaId] = row.reaction;
+  return out;
 };
 
 /**
@@ -122,27 +112,27 @@ export const getViewerReactions = async (
  * resolve the pod once before invoking the policy layer.
  */
 export const resolveMediaPod = async (
-	mediaId: string,
+  mediaId: string
 ): Promise<{
-	id: string;
-	podId: string;
-	status: string;
-	hiddenAt: Date | null;
-	uploadedById: string;
+  id: string;
+  podId: string;
+  status: string;
+  hiddenAt: Date | null;
+  uploadedById: string;
 } | null> => {
-	const database = requireDb();
-	const row = await database.query.podMedia.findFirst({
-		where: eq(podMedia.id, mediaId),
-		columns: {
-			id: true,
-			podId: true,
-			status: true,
-			hiddenAt: true,
-			uploadedById: true,
-		},
-	});
-	if (!row) return null;
-	return row;
+  const database = requireDb();
+  const row = await database.query.podMedia.findFirst({
+    where: eq(podMedia.id, mediaId),
+    columns: {
+      id: true,
+      podId: true,
+      status: true,
+      hiddenAt: true,
+      uploadedById: true,
+    },
+  });
+  if (!row) return null;
+  return row;
 };
 
 /**
@@ -150,25 +140,20 @@ export const resolveMediaPod = async (
  * details drawer (group pods only per spec §3.6 — enforce in caller).
  */
 export const getReactors = async (
-	mediaId: string,
-	reaction: string,
-	limit = 100,
+  mediaId: string,
+  reaction: string,
+  limit = 100
 ): Promise<{ userId: string; createdAt: Date }[]> => {
-	if (!isValidReactionSlug(reaction)) return [];
-	const database = requireDb();
-	const rows = await database
-		.select({
-			userId: mediaReactions.userId,
-			createdAt: mediaReactions.createdAt,
-		})
-		.from(mediaReactions)
-		.where(
-			and(
-				eq(mediaReactions.mediaId, mediaId),
-				eq(mediaReactions.reaction, reaction),
-			),
-		)
-		.orderBy(sql`created_at desc`)
-		.limit(limit);
-	return rows;
+  if (!isValidReactionSlug(reaction)) return [];
+  const database = requireDb();
+  const rows = await database
+    .select({
+      userId: mediaReactions.userId,
+      createdAt: mediaReactions.createdAt,
+    })
+    .from(mediaReactions)
+    .where(and(eq(mediaReactions.mediaId, mediaId), eq(mediaReactions.reaction, reaction)))
+    .orderBy(sql`created_at desc`)
+    .limit(limit);
+  return rows;
 };

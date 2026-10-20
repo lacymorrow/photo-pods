@@ -3,33 +3,19 @@
 import { desc, eq, sql, count } from "drizzle-orm";
 import { auraDb, auraSchema } from "@/server/db/aura-db";
 
-const {
-  recordings,
-  conversations,
-  speakers,
-  people,
-  knowledgeEntries,
-  conversationSpeakers,
-} = auraSchema;
+const { recordings, conversations, speakers, people, knowledgeEntries, conversationSpeakers } =
+  auraSchema;
 
 // ── Dashboard Stats ─────────────────────────────────────────
 
 export async function getDashboardStats() {
   if (!auraDb) return null;
 
-  const [recordingCount] = await auraDb
-    .select({ count: count() })
-    .from(recordings);
-  const [conversationCount] = await auraDb
-    .select({ count: count() })
-    .from(conversations);
-  const [speakerCount] = await auraDb
-    .select({ count: count() })
-    .from(speakers);
+  const [recordingCount] = await auraDb.select({ count: count() }).from(recordings);
+  const [conversationCount] = await auraDb.select({ count: count() }).from(conversations);
+  const [speakerCount] = await auraDb.select({ count: count() }).from(speakers);
   const [personCount] = await auraDb.select({ count: count() }).from(people);
-  const [knowledgeCount] = await auraDb
-    .select({ count: count() })
-    .from(knowledgeEntries);
+  const [knowledgeCount] = await auraDb.select({ count: count() }).from(knowledgeEntries);
 
   const [totalDuration] = await auraDb
     .select({
@@ -54,20 +40,13 @@ export async function getDashboardStats() {
 export async function getRecordings(limit = 50) {
   if (!auraDb) return [];
 
-  return auraDb
-    .select()
-    .from(recordings)
-    .orderBy(desc(recordings.createdAt))
-    .limit(limit);
+  return auraDb.select().from(recordings).orderBy(desc(recordings.createdAt)).limit(limit);
 }
 
 export async function getRecording(id: string) {
   if (!auraDb) return null;
 
-  const [result] = await auraDb
-    .select()
-    .from(recordings)
-    .where(eq(recordings.id, id));
+  const [result] = await auraDb.select().from(recordings).where(eq(recordings.id, id));
   return result ?? null;
 }
 
@@ -97,10 +76,7 @@ export async function getConversations(limit = 50) {
 export async function getConversation(id: string) {
   if (!auraDb) return null;
 
-  const [result] = await auraDb
-    .select()
-    .from(conversations)
-    .where(eq(conversations.id, id));
+  const [result] = await auraDb.select().from(conversations).where(eq(conversations.id, id));
 
   if (!result) return null;
 
@@ -152,10 +128,7 @@ export async function getPeople(limit = 100) {
 export async function getPerson(id: string) {
   if (!auraDb) return null;
 
-  const [result] = await auraDb
-    .select()
-    .from(people)
-    .where(eq(people.id, id));
+  const [result] = await auraDb.select().from(people).where(eq(people.id, id));
 
   if (!result) return null;
 
@@ -216,9 +189,7 @@ export async function getMorningBriefing() {
   const recentKnowledge = await auraDb
     .select()
     .from(knowledgeEntries)
-    .where(
-      sql`${knowledgeEntries.createdAt} > now() - interval '24 hours'`
-    )
+    .where(sql`${knowledgeEntries.createdAt} > now() - interval '24 hours'`)
     .orderBy(desc(knowledgeEntries.createdAt));
 
   // Recent people mentioned
@@ -239,15 +210,10 @@ export async function getMorningBriefing() {
     })
     .from(conversations)
     .leftJoin(recordings, eq(conversations.recordingId, recordings.id))
-    .where(
-      sql`${conversations.createdAt} > now() - interval '24 hours'`
-    )
+    .where(sql`${conversations.createdAt} > now() - interval '24 hours'`)
     .orderBy(desc(conversations.createdAt));
 
-  const totalDuration = recentRecordings.reduce(
-    (sum, r) => sum + (r.durationSeconds ?? 0),
-    0
-  );
+  const totalDuration = recentRecordings.reduce((sum, r) => sum + (r.durationSeconds ?? 0), 0);
 
   return {
     recordings: recentRecordings,

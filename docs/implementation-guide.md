@@ -9,14 +9,13 @@ This directory contains comprehensive documentation for Shipkit's implementation
 
 ## 📋 Implementation Status & Checklists
 
-- [Shipkit.io Implementation Checklist](./shipkit-io-implementation-checklist.md) - Overall project implementation status and tasks
+- [Shipkit.io Implementation Checklist](./implementation-checklist.md) - Overall project implementation status and tasks
 
 ## 🔧 Development Implementations
 
 ### Completed Implementations
 
 - [Better Auth Integration](./development/implementations/better-auth-implementation.md) - Complete implementation plan for Better Auth as an alternative to Auth.js
-- [Graceful Degradation](./development/implementations/GRACEFUL_DEGRADATION_COMPLETE.md) - Implementation of graceful degradation for database-less operation
 - [Waitlist Implementation](./development/implementations/WAITLIST_IMPLEMENTATION.md) - Waitlist feature implementation documentation
 
 ### Optimization Plans
@@ -27,12 +26,12 @@ This directory contains comprehensive documentation for Shipkit's implementation
 
 ### Payment Integrations
 
-- [Stripe Implementation Plan](./integrations/stripe-implementation-plan.md) - Complete Stripe integration strategy
-- [LemonSqueezy Security Best Practices](./integrations/lemonsqueezy-webhooks-best-practices.md) - Existing LemonSqueezy integration docs
+- [Stripe Integration](/docs/integrations/payments/stripe) - Complete Stripe integration strategy
+- [LemonSqueezy Integration](/docs/integrations/payments/lemonsqueezy) - Existing LemonSqueezy integration docs
 
 ### Security Audits
 
-- [LemonSqueezy Webhook Security Audit](./integrations/security/LEMONSQUEEZY_WEBHOOK_SECURITY_AUDIT.md) - Security audit checklist and fixes for LemonSqueezy webhooks
+- [Webhook Security Implementation](./webhook-security-implementation.md) - Signature verification and hardening for payment webhooks
 
 ## 🚀 Deployment & Architecture
 
@@ -44,10 +43,10 @@ This directory contains comprehensive documentation for Shipkit's implementation
 
 ## 📚 Other Documentation Sections
 
-- [Content Management](./content-management/) - CMS and content strategy documentation
+- [Content Management](/docs/guides/content-management) - CMS and content strategy documentation
 - [Development](./development/) - Development best practices and guides
 - [Integrations](./integrations/) - Third-party service integrations
-- [Snippets](./snippets/) - Code snippets and examples
+- [Snippets](/docs/snippets/snippet-intro) - Code snippets and examples
 
 ## 🏗️ Project Structure
 

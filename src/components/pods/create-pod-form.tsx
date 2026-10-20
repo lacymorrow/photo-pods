@@ -7,93 +7,85 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { createPod } from "@/server/actions/pods";
 
 export const CreatePodForm = () => {
-	const router = useRouter();
-	const [isPending, startTransition] = useTransition();
-	const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
 
-	const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-		e.preventDefault();
-		setError(null);
-		const formData = new FormData(e.currentTarget);
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+    const formData = new FormData(e.currentTarget);
 
-		startTransition(async () => {
-			try {
-				const pod = await createPod({
-					name: formData.get("name") as string,
-					description: (formData.get("description") as string) || undefined,
-					visibility: (formData.get("visibility") as "public" | "private" | "group") ?? "group",
-				});
-				router.push(`/pods/${pod.id}`);
-			} catch (err) {
-				setError(err instanceof Error ? err.message : "Failed to create pod. Please try again.");
-			}
-		});
-	};
+    startTransition(async () => {
+      try {
+        const pod = await createPod({
+          name: formData.get("name") as string,
+          description: (formData.get("description") as string) || undefined,
+          visibility: (formData.get("visibility") as "public" | "private" | "group") ?? "group",
+        });
+        router.push(`/pods/${pod.id}`);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to create pod. Please try again.");
+      }
+    });
+  };
 
-	return (
-		<form onSubmit={handleSubmit} className="space-y-6 max-w-lg">
-			<div className="space-y-2">
-				<Label htmlFor="name">Pod Name</Label>
-				<Input
-					id="name"
-					name="name"
-					placeholder="Bonnaroo 2026"
-					required
-					maxLength={255}
-				/>
-			</div>
+  return (
+    <form onSubmit={handleSubmit} className="max-w-lg space-y-6">
+      <div className="space-y-2">
+        <Label htmlFor="name">Pod Name</Label>
+        <Input id="name" name="name" placeholder="Bonnaroo 2026" required maxLength={255} />
+      </div>
 
-			<div className="space-y-2">
-				<Label htmlFor="description">Description</Label>
-				<Textarea
-					id="description"
-					name="description"
-					placeholder="Photos from our trip..."
-					rows={3}
-				/>
-			</div>
+      <div className="space-y-2">
+        <Label htmlFor="description">Description</Label>
+        <Textarea
+          id="description"
+          name="description"
+          placeholder="Photos from our trip..."
+          rows={3}
+        />
+      </div>
 
-			<div className="space-y-2">
-				<Label htmlFor="visibility">Visibility</Label>
-				<Select name="visibility" defaultValue="group">
-					<SelectTrigger>
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="private">Private</SelectItem>
-						<SelectItem value="group">Group</SelectItem>
-						<SelectItem value="public">Public</SelectItem>
-					</SelectContent>
-				</Select>
-				<p className="text-xs text-muted-foreground">
-					Private: just you. Group: invite friends. Public: open topic dump anyone can view.
-				</p>
-			</div>
+      <div className="space-y-2">
+        <Label htmlFor="visibility">Visibility</Label>
+        <Select name="visibility" defaultValue="group">
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="private">Private</SelectItem>
+            <SelectItem value="group">Group</SelectItem>
+            <SelectItem value="public">Public</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Private: just you. Group: invite friends. Public: open topic dump anyone can view.
+        </p>
+      </div>
 
-			{error && (
-				<p className="text-sm text-destructive">{error}</p>
-			)}
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
-			<Button type="submit" disabled={isPending}>
-				{isPending ? (
-					<>
-						<Loader2 className="h-4 w-4 mr-1 animate-spin" />
-						Creating...
-					</>
-				) : (
-					"Create Pod"
-				)}
-			</Button>
-		</form>
-	);
+      <Button type="submit" disabled={isPending}>
+        {isPending ? (
+          <>
+            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+            Creating...
+          </>
+        ) : (
+          "Create Pod"
+        )}
+      </Button>
+    </form>
+  );
 };

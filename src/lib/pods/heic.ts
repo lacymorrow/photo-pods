@@ -8,7 +8,7 @@
  */
 
 export function isHeicFile(file: Pick<File, "name" | "type">): boolean {
-	if (/^image\/hei[cf]/.test(file.type)) return true;
-	if (file.type !== "") return false;
-	return /\.hei[cf]$/i.test(file.name);
+  if (/^image\/hei[cf]/.test(file.type)) return true;
+  if (file.type !== "") return false;
+  return /\.hei[cf]$/i.test(file.name);
 }

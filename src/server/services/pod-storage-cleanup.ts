@@ -13,39 +13,31 @@
 
 import { db } from "@/server/db";
 import { type PodMedia, podStorageDeleteQueue } from "@/server/db/pods-schema";
-import {
-	deleteObject,
-	loadStorageConfig,
-	publicUrlForKey,
-} from "@/server/services/pod-storage";
+import { deleteObject, loadStorageConfig, publicUrlForKey } from "@/server/services/pod-storage";
 
 /**
  * Collect every storage key associated with a media row: the original plus
  * any precomputed thumbnail variants.
  */
-export const collectMediaKeys = (
-	media: Pick<PodMedia, "storageKey" | "variants">,
-): string[] => {
-	const keys: string[] = [];
-	if (media.storageKey) keys.push(media.storageKey);
-	const variants = media.variants ?? null;
-	if (variants) {
-		for (const value of Object.values(variants)) {
-			if (typeof value === "string" && value.length > 0) keys.push(value);
-		}
-	}
-	return keys;
+export const collectMediaKeys = (media: Pick<PodMedia, "storageKey" | "variants">): string[] => {
+  const keys: string[] = [];
+  if (media.storageKey) keys.push(media.storageKey);
+  const variants = media.variants ?? null;
+  if (variants) {
+    for (const value of Object.values(variants)) {
+      if (typeof value === "string" && value.length > 0) keys.push(value);
+    }
+  }
+  return keys;
 };
 
 const enqueueRetries = async (keys: string[]): Promise<void> => {
-	if (!db || keys.length === 0) return;
-	try {
-		await db
-			.insert(podStorageDeleteQueue)
-			.values(keys.map((storageKey) => ({ storageKey })));
-	} catch (err) {
-		console.error("[pod-storage-cleanup] failed to enqueue retry", err);
-	}
+  if (!db || keys.length === 0) return;
+  try {
+    await db.insert(podStorageDeleteQueue).values(keys.map((storageKey) => ({ storageKey })));
+  } catch (err) {
+    console.error("[pod-storage-cleanup] failed to enqueue retry", err);
+  }
 };
 
 /**
@@ -54,40 +46,40 @@ const enqueueRetries = async (keys: string[]): Promise<void> => {
  * by a transient storage error.
  */
 export const deleteObjectsWithRetry = async (
-	keys: readonly string[],
+  keys: readonly string[]
 ): Promise<{ deleted: string[]; queued: string[] }> => {
-	const config = loadStorageConfig();
-	// No S3-compatible storage configured yet — everything goes to the queue
-	// so the worker can drain once R2 is provisioned.
-	if (config.provider === "vercel-blob" || !config.bucket) {
-		if (keys.length > 0) await enqueueRetries([...keys]);
-		return { deleted: [], queued: [...keys] };
-	}
+  const config = loadStorageConfig();
+  // No S3-compatible storage configured yet — everything goes to the queue
+  // so the worker can drain once R2 is provisioned.
+  if (config.provider === "vercel-blob" || !config.bucket) {
+    if (keys.length > 0) await enqueueRetries([...keys]);
+    return { deleted: [], queued: [...keys] };
+  }
 
-	const deleted: string[] = [];
-	const failed: string[] = [];
-	const publicKeys: string[] = [];
+  const deleted: string[] = [];
+  const failed: string[] = [];
+  const publicKeys: string[] = [];
 
-	// Serial to avoid opening dozens of sockets per pod delete. R2 caps
-	// concurrent DELETEs; this stays well under.
-	for (const key of keys) {
-		const result = await deleteObject(config, key);
-		if (result.ok) {
-			deleted.push(key);
-			if (publicUrlForKey(config, key)) publicKeys.push(key);
-		} else {
-			failed.push(key);
-			console.warn(
-				"[pod-storage-cleanup] delete failed",
-				JSON.stringify({ key, status: result.status, error: result.error }),
-			);
-		}
-	}
+  // Serial to avoid opening dozens of sockets per pod delete. R2 caps
+  // concurrent DELETEs; this stays well under.
+  for (const key of keys) {
+    const result = await deleteObject(config, key);
+    if (result.ok) {
+      deleted.push(key);
+      if (publicUrlForKey(config, key)) publicKeys.push(key);
+    } else {
+      failed.push(key);
+      console.warn(
+        "[pod-storage-cleanup] delete failed",
+        JSON.stringify({ key, status: result.status, error: result.error })
+      );
+    }
+  }
 
-	if (failed.length > 0) await enqueueRetries(failed);
-	if (publicKeys.length > 0) await purgeCdnCache(publicKeys);
+  if (failed.length > 0) await enqueueRetries(failed);
+  if (publicKeys.length > 0) await purgeCdnCache(publicKeys);
 
-	return { deleted, queued: failed };
+  return { deleted, queued: failed };
 };
 
 // --- CDN purge (Cloudflare) ---
@@ -100,41 +92,38 @@ export const deleteObjectsWithRetry = async (
  * photo can remain retrievable for hours.
  */
 const purgeCdnCache = async (keys: string[]): Promise<void> => {
-	const zoneId = process.env.CLOUDFLARE_ZONE_ID;
-	const apiToken = process.env.CLOUDFLARE_API_TOKEN;
-	if (!zoneId || !apiToken || keys.length === 0) return;
+  const zoneId = process.env.CLOUDFLARE_ZONE_ID;
+  const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+  if (!zoneId || !apiToken || keys.length === 0) return;
 
-	const config = loadStorageConfig();
-	const files = keys
-		.map((key) => publicUrlForKey(config, key))
-		.filter((url): url is string => Boolean(url));
-	if (files.length === 0) return;
+  const config = loadStorageConfig();
+  const files = keys
+    .map((key) => publicUrlForKey(config, key))
+    .filter((url): url is string => Boolean(url));
+  if (files.length === 0) return;
 
-	try {
-		// Cloudflare purge-by-URL: max 30 URLs per call for free plans;
-		// chunk defensively.
-		for (let i = 0; i < files.length; i += 30) {
-			const chunk = files.slice(i, i + 30);
-			const res = await fetch(
-				`https://api.cloudflare.com/client/v4/zones/${zoneId}/purge_cache`,
-				{
-					method: "POST",
-					headers: {
-						Authorization: `Bearer ${apiToken}`,
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify({ files: chunk }),
-				},
-			);
-			if (!res.ok) {
-				console.warn(
-					"[pod-storage-cleanup] cdn purge failed",
-					res.status,
-					await res.text().catch(() => ""),
-				);
-			}
-		}
-	} catch (err) {
-		console.warn("[pod-storage-cleanup] cdn purge threw", err);
-	}
+  try {
+    // Cloudflare purge-by-URL: max 30 URLs per call for free plans;
+    // chunk defensively.
+    for (let i = 0; i < files.length; i += 30) {
+      const chunk = files.slice(i, i + 30);
+      const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/purge_cache`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ files: chunk }),
+      });
+      if (!res.ok) {
+        console.warn(
+          "[pod-storage-cleanup] cdn purge failed",
+          res.status,
+          await res.text().catch(() => "")
+        );
+      }
+    }
+  } catch (err) {
+    console.warn("[pod-storage-cleanup] cdn purge threw", err);
+  }
 };

@@ -5,119 +5,111 @@ import { Check, Copy, Download, Link, QrCode } from "lucide-react";
 import { useCallback, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import {
-	Dialog,
-	DialogContent,
-	DialogHeader,
-	DialogTitle,
-	DialogTrigger,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { createInviteLink } from "@/server/actions/pods";
 
 interface InviteLinkProps {
-	podId: string;
+  podId: string;
 }
 
 export const InviteLink = ({ podId }: InviteLinkProps) => {
-	const [link, setLink] = useState<string | null>(null);
-	const [shortCode, setShortCode] = useState<string | null>(null);
-	const [copied, setCopied] = useState(false);
-	const [isPending, startTransition] = useTransition();
-	const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [link, setLink] = useState<string | null>(null);
+  const [shortCode, setShortCode] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
 
-	const handleGenerate = () => {
-		startTransition(async () => {
-			const invite = await createInviteLink(podId);
-			const { token } = invite;
-			setShortCode(invite.shortCode ?? null);
-			const url = `${window.location.origin}/pods/invite/${token}`;
-			setLink(url);
-			// Pre-generate QR code
-			try {
-				const dataUrl = await QRCode.toDataURL(url, {
-					width: 512,
-					margin: 2,
-					color: { dark: "#000000", light: "#ffffff" },
-				});
-				setQrDataUrl(dataUrl);
-			} catch {
-				// QR generation failed — button will be hidden
-			}
-		});
-	};
+  const handleGenerate = () => {
+    startTransition(async () => {
+      const invite = await createInviteLink(podId);
+      const { token } = invite;
+      setShortCode(invite.shortCode ?? null);
+      const url = `${window.location.origin}/pods/invite/${token}`;
+      setLink(url);
+      // Pre-generate QR code
+      try {
+        const dataUrl = await QRCode.toDataURL(url, {
+          width: 512,
+          margin: 2,
+          color: { dark: "#000000", light: "#ffffff" },
+        });
+        setQrDataUrl(dataUrl);
+      } catch {
+        // QR generation failed — button will be hidden
+      }
+    });
+  };
 
-	const handleCopy = async () => {
-		if (!link) return;
-		await navigator.clipboard.writeText(link);
-		setCopied(true);
-		setTimeout(() => setCopied(false), 2000);
-	};
+  const handleCopy = async () => {
+    if (!link) return;
+    await navigator.clipboard.writeText(link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
-	const handleDownloadQr = useCallback(() => {
-		if (!qrDataUrl) return;
-		const a = document.createElement("a");
-		a.href = qrDataUrl;
-		a.download = "pod-invite-qr.png";
-		a.click();
-	}, [qrDataUrl]);
+  const handleDownloadQr = useCallback(() => {
+    if (!qrDataUrl) return;
+    const a = document.createElement("a");
+    a.href = qrDataUrl;
+    a.download = "pod-invite-qr.png";
+    a.click();
+  }, [qrDataUrl]);
 
-	return (
-		<div className="space-y-3">
-			<Button onClick={handleGenerate} disabled={isPending} variant="outline">
-				<Link className="h-4 w-4 mr-1" />
-				Generate Invite
-			</Button>
+  return (
+    <div className="space-y-3">
+      <Button onClick={handleGenerate} disabled={isPending} variant="outline">
+        <Link className="mr-1 h-4 w-4" />
+        Generate Invite
+      </Button>
 
-			{link && (
-				<div className="space-y-2">
-					<div className="flex items-center gap-2 p-2 bg-muted rounded-lg">
-						<code className="text-xs flex-1 truncate">{link}</code>
-						<Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={handleCopy}>
-							{copied ? (
-								<Check className="h-4 w-4 text-green-500" />
-							) : (
-								<Copy className="h-4 w-4" />
-							)}
-						</Button>
-					</div>
+      {link && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 rounded-lg bg-muted p-2">
+            <code className="flex-1 truncate text-xs">{link}</code>
+            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={handleCopy}>
+              {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+            </Button>
+          </div>
 
-					{shortCode && (
-						<p className="text-xs text-muted-foreground">
-							Or use the code <span className="font-mono font-semibold">{shortCode}</span>.
-						</p>
-					)}
+          {shortCode && (
+            <p className="text-xs text-muted-foreground">
+              Or use the code <span className="font-mono font-semibold">{shortCode}</span>.
+            </p>
+          )}
 
-					{qrDataUrl && (
-						<Dialog>
-							<DialogTrigger asChild>
-								<Button variant="outline" size="sm" className="w-full">
-									<QrCode className="h-4 w-4 mr-2" />
-									Show QR Code
-								</Button>
-							</DialogTrigger>
-							<DialogContent className="sm:max-w-sm">
-								<DialogHeader>
-									<DialogTitle>Invite QR Code</DialogTitle>
-								</DialogHeader>
-								<div className="flex flex-col items-center gap-4 py-4">
-									{/* eslint-disable-next-line @next/next/no-img-element */}
-									<img
-										src={qrDataUrl}
-										alt="Invite QR Code"
-										className="w-64 h-64 rounded-lg"
-									/>
-									<p className="text-xs text-muted-foreground text-center max-w-xs">
-										Scan to join the pod.
-									</p>
-									<Button variant="outline" size="sm" onClick={handleDownloadQr}>
-										<Download className="h-4 w-4 mr-2" />
-										Download PNG
-									</Button>
-								</div>
-							</DialogContent>
-						</Dialog>
-					)}
-				</div>
-			)}
-		</div>
-	);
+          {qrDataUrl && (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="w-full">
+                  <QrCode className="mr-2 h-4 w-4" />
+                  Show QR Code
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-sm">
+                <DialogHeader>
+                  <DialogTitle>Invite QR Code</DialogTitle>
+                </DialogHeader>
+                <div className="flex flex-col items-center gap-4 py-4">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={qrDataUrl} alt="Invite QR Code" className="h-64 w-64 rounded-lg" />
+                  <p className="max-w-xs text-center text-xs text-muted-foreground">
+                    Scan to join the pod.
+                  </p>
+                  <Button variant="outline" size="sm" onClick={handleDownloadQr}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Download PNG
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
+      )}
+    </div>
+  );
 };

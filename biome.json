@@ -33,7 +33,7 @@
       "trailingCommas": "es5",
       "arrowParentheses": "always"
     },
-    "globals": ["React"]
+    "globals": ["React", "Bun"]
   },
   "linter": {
     "enabled": true,

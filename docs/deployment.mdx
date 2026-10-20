@@ -1,6 +1,6 @@
 ---
-title: 'Deployment'
-description: 'Deploy Shipkit to Vercel with zero configuration'
+title: "Deployment"
+description: "Deploy Shipkit to Vercel with zero configuration"
 ---
 
 # Deployment
@@ -38,6 +38,7 @@ vercel deploy
 Shipkit needs these to work properly:
 
 1. **Copy the example file:**
+
    ```bash
    cp .env.example .env.local
    ```
@@ -76,6 +77,7 @@ Before going live:
 ## Advanced Deployment
 
 ### Multi-Zone Setup
+
 Run multiple Shipkit apps on different paths:
 
 ```typescript
@@ -92,6 +94,7 @@ async rewrites() {
 ```
 
 ### Custom Domains
+
 Point your domain to Vercel:
 
 1. Add your domain in Vercel dashboard
@@ -101,11 +104,13 @@ Point your domain to Vercel:
 ## Troubleshooting
 
 **Build failing?**
+
 - Check environment variables are set
 - Verify database connection
 - Check for TypeScript errors
 
 **Slow performance?**
+
 - Enable Vercel's analytics
 - Check image optimization
 - Review bundle size
