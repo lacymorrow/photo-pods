@@ -112,8 +112,17 @@ export async function isAdmin({
   // Grant admin with `ADMIN_EMAIL`/`ADMIN_DOMAINS` or `users.role`. The RBAC
   // path above is reachable but unseeded: nothing in the repo writes a
   // `system`/`admin` permission row, and `hasPermission` compares resource and
-  // action by exact equality, so the `"*"` rows `configureSetup` would write
-  // never match (verified in review, LAC-5016).
+  // action by exact equality, so a wildcard `"*"` row would not match one
+  // either (verified in review, LAC-5016).
+  //
+  // Nothing in the repo writes `users.role = "admin"` now either. The one
+  // writer was `configureSetup`, an unauthenticated `"use server"` action that
+  // took a caller-chosen email and password, inserted the row with
+  // `emailVerified` set, and was one `import` from a setup page away from
+  // being live anonymous admin. It is deleted (LAC-5017), and
+  // `tests/node/server/no-admin-minting-server-action.test.ts` pins that no
+  // server action writes that value. Today the role is set out of band, by
+  // hand against the database.
 
   return false;
 }
