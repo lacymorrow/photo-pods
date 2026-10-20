@@ -145,7 +145,13 @@ export const test = base.extend<{
     await applyVercelBypass(context);
     await use(context);
   },
-  manifest: async (_fixtures, use) => {
+  // Playwright reads the destructured keys of a fixture's first argument to
+  // resolve that fixture's dependencies, so the argument must literally BE a
+  // destructuring pattern. `({}, use)` is the documented way to say "no
+  // dependencies"; naming the parameter instead (`(_fixtures, use)`) makes
+  // base.extend throw at module load and takes down the whole suite.
+  // biome-ignore lint/correctness/noEmptyPattern: Playwright fixture contract, see above
+  manifest: async ({}, use) => {
     await use(requireManifest());
   },
   signIn: async ({ page }, use) => {
