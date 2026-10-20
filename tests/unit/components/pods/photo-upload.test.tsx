@@ -128,7 +128,13 @@ describe("PhotoUpload (LAC-2915)", () => {
       const alert = await screen.findByRole("alert");
       expect(alert).toHaveTextContent("Storage upload failed (HTTP 403)");
       // Only the failed file remains staged, so a retry re-sends just it.
-      expect(screen.getByRole("button", { name: /upload 1 photo/i })).toBeInTheDocument();
+      // Must be awaited: the error and the tray trim land in the same React
+      // transition, so the alert the findByRole above unblocked on does not
+      // guarantee the trim has rendered. Reading it synchronously made this
+      // test fail under full-suite load and pass in isolation (LAC-5005).
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: /upload 1 photo/i })).toBeInTheDocument()
+      );
 
       uploadMock.mockResolvedValueOnce(undefined);
       fireEvent.click(screen.getByRole("button", { name: /upload 1 photo/i }));

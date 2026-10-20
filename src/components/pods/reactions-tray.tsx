@@ -63,16 +63,16 @@ export const ReactionsTray = ({
   };
 
   return (
+    // Not `toolbar`: that is an ARIA composite widget, and the APG contract for
+    // it is one tab stop plus roving tabindex and arrow-key navigation, which
+    // these natively-tabbable buttons do not implement. `group` is a plain
+    // container role that promises none of that; it exists here only to hang
+    // `aria-label` on. Not <fieldset> either (biome's suggestion) — these are
+    // command buttons rather than form controls, and fieldset's
+    // `min-width: min-content` would break the horizontal scroll row.
+    // biome-ignore lint/a11y/useSemanticElements: see above
     <div
       className={cn("flex scrollbar-none items-center gap-1 overflow-x-auto py-1", className)}
-      // Not `toolbar`: that is an ARIA composite widget, and the APG contract
-      // for it is one tab stop plus roving tabindex and arrow-key navigation,
-      // which these natively-tabbable buttons do not implement. `group` is a
-      // plain container role and promises none of that; it exists here only to
-      // hang `aria-label` on. Not <fieldset> either (biome's suggestion) —
-      // these are command buttons rather than form controls, and fieldset's
-      // `min-width: min-content` would break the horizontal scroll row.
-      // biome-ignore lint/a11y/useSemanticElements: see above
       role="group"
       aria-label="React"
     >
