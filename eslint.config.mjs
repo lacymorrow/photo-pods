@@ -20,10 +20,6 @@ const eslintConfig = [
       ".vercel/**",
       ".claude/**",
       "public/**",
-      // tsconfig excludes (demo) examples; ESLint needs to match or it
-      // can't find them in any TS project for type-aware linting.
-      "src/app/(app)/(demo)/examples/**",
-      "src/app/(demo)/**/*",
       // cli/ has its own tsconfig + toolchain and its deps aren't
       // installed by the root `bun install`; root tsconfig excludes it,
       // so type-aware linting can't resolve it here.
@@ -205,16 +201,23 @@ const eslintConfig = [
       "@typescript-eslint/no-unsafe-call": "warn",
       "@typescript-eslint/no-unsafe-member-access": "warn",
       "@typescript-eslint/no-unsafe-return": "warn",
-      // Advisory here, as it already is for scripts/ and tests/ below. Every
-      // `||` this flags coalesces a falsy value on purpose — empty-string env
-      // vars in aura-db, Clerk's "" for a missing avatar in session-mapping,
-      // empty EXIF fields in photo-grid. Rewriting them to `??` would be a
-      // behaviour change, not a cleanup.
-      "@typescript-eslint/prefer-nullish-coalescing": "warn",
-      // Advisory for the same reason. The functions this flags are async by
-      // contract, not by accident: Next's sitemap/generateSitemaps route
-      // exports, and the Clerk facades that have to match Auth.js's
-      // Promise-returning signIn/signOut signatures.
+      // Stays an error, but exempts the two shapes this codebase uses on
+      // purpose: `||` over a string, where the point is to treat "" as absent
+      // (empty-string env vars in aura-db, Clerk's "" for a missing avatar in
+      // session-mapping, empty EXIF fields in photo-grid), and the
+      // `if (!x) { x = ... }` memoization in payload.ts. Everything the rule
+      // still catches is the case that actually bites — `||` swallowing a
+      // legitimate `0` or `false`. Zero violations as configured.
+      "@typescript-eslint/prefer-nullish-coalescing": [
+        "error",
+        { ignorePrimitives: { string: true }, ignoreIfStatements: true },
+      ],
+      // Advisory. The four functions this flags are async by contract rather
+      // than by accident: Next's sitemap/generateSitemaps route exports, and
+      // the Clerk facades that must match Auth.js's Promise-returning
+      // signIn/signOut to stay drop-in. Demoted rather than suppressed
+      // per-site because the rule has close to no bug-finding power — an
+      // async function without an await is not itself a defect.
       "@typescript-eslint/require-await": "warn",
     },
   },
@@ -288,10 +291,6 @@ const eslintConfig = [
       "@typescript-eslint": ts,
     },
     rules: {
-      // Playwright's fixture callback is named `use`, which the React Hooks
-      // rule reads as the `use` hook being called outside a component. There
-      // are no React hooks in tests/e2e.
-      "react-hooks/rules-of-hooks": "off",
       // Type-aware rules require parserOptions.project; explicitly disable
       // them here to match the non-project parser.
       "@typescript-eslint/prefer-nullish-coalescing": "off",
@@ -305,6 +304,18 @@ const eslintConfig = [
       "@typescript-eslint/require-await": "off",
       "@typescript-eslint/no-base-to-string": "off",
       "@typescript-eslint/await-thenable": "off",
+    },
+  },
+
+  // Playwright fixtures only. Its fixture callback is named `use`, which the
+  // React Hooks rule reads as the `use` hook called outside a component.
+  // Deliberately NOT the whole of tests/: tests/unit/components/**/*.tsx holds
+  // real React, and that is exactly where a conditional-hook bug should still
+  // be caught.
+  {
+    files: ["tests/e2e/**/*.{ts,tsx}"],
+    rules: {
+      "react-hooks/rules-of-hooks": "off",
     },
   },
 ];

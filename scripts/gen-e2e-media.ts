@@ -222,39 +222,19 @@ async function makePaddedJpeg(outPath: string, targetBytes: number) {
  */
 function makePaddedMp4(outPath: string, targetBytes: number) {
   // ftyp box: 32 bytes — 4 size + "ftyp" + "isom" + 4-byte minor + "isom" + "mp41"
+  // One row per 4-byte box field. prettier cannot fill a list whose entries
+  // carry trailing comments, so without the directive it prints 32 lines of
+  // one byte each and the table stops being readable as a box header.
+  // prettier-ignore
   const ftyp = Buffer.from([
-    0x00,
-    0x00,
-    0x00,
-    0x20, // size = 32
-    0x66,
-    0x74,
-    0x79,
-    0x70, // "ftyp"
-    0x69,
-    0x73,
-    0x6f,
-    0x6d, // "isom"
-    0x00,
-    0x00,
-    0x02,
-    0x00, // minor version
-    0x69,
-    0x73,
-    0x6f,
-    0x6d, // compatible: "isom"
-    0x69,
-    0x73,
-    0x6f,
-    0x32, // "iso2"
-    0x61,
-    0x76,
-    0x63,
-    0x31, // "avc1"
-    0x6d,
-    0x70,
-    0x34,
-    0x31, // "mp41"
+    0x00, 0x00, 0x00, 0x20, // size = 32
+    0x66, 0x74, 0x79, 0x70, // "ftyp"
+    0x69, 0x73, 0x6f, 0x6d, // "isom"
+    0x00, 0x00, 0x02, 0x00, // minor version
+    0x69, 0x73, 0x6f, 0x6d, // compatible: "isom"
+    0x69, 0x73, 0x6f, 0x32, // "iso2"
+    0x61, 0x76, 0x63, 0x31, // "avc1"
+    0x6d, 0x70, 0x34, 0x31, // "mp41"
   ]);
 
   // free box header: 8 bytes (4 size + "free"); rest is arbitrary bytes.

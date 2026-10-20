@@ -42,23 +42,28 @@ export const CreatePodSheet = ({ open, onOpenChange }: CreatePodSheetProps) => {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const nameRef = useRef<HTMLInputElement>(null);
-  // Picked when the sheet opens rather than during render: Math.random() in
-  // render makes the server and client disagree on the placeholder, and it
-  // also gives a fresh suggestion each time the sheet is reopened.
-  const [placeholder, setPlaceholder] = useState(NAME_PLACEHOLDERS[0]);
+  // Lazy initializer, so the pick happens once per mount instead of during
+  // every render. Calling Math.random() in the render body made the server and
+  // client disagree on the placeholder; setting it from the open effect instead
+  // would paint index 0 for one frame and then swap mid-animation.
+  const [placeholder] = useState(
+    () => NAME_PLACEHOLDERS[Math.floor(Math.random() * NAME_PLACEHOLDERS.length)]
+  );
 
+  /* eslint-disable react-hooks/set-state-in-effect --
+     Resets the form each time the sheet is opened. The alternative the compiler
+     wants here is remounting on a `key`, which would throw away the sheet's
+     open/close animation. Tracked in LAC-4984. Disabled as a block because the
+     rule reports once per effect, so a line-scoped directive would silently
+     stop covering these if the calls were reordered. */
   useEffect(() => {
     if (open) {
-      // Resets the form each time the sheet is opened. The alternative the
-      // compiler wants here is remounting on a `key`, which would throw away
-      // the sheet's open/close animation. Tracked separately.
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- see above
       setStep(0);
       setError(null);
-      setPlaceholder(NAME_PLACEHOLDERS[Math.floor(Math.random() * NAME_PLACEHOLDERS.length)]);
       setTimeout(() => nameRef.current?.focus(), 100);
     }
   }, [open]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const canContinueName = name.trim().length > 0 && name.length <= 60;
 
