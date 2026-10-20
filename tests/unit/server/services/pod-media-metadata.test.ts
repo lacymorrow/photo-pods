@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { stripImageMetadata } from "@/server/services/pod-media-metadata";
+import {
+  stripImageMetadata,
+  verifyImageMetadataStripped,
+} from "@/server/services/pod-media-metadata";
 
 // --- byte helpers ---
 
@@ -7,6 +10,16 @@ const ascii = (s: string) => Array.from(s, (c) => c.charCodeAt(0));
 const u16be = (n: number) => [(n >> 8) & 0xff, n & 0xff];
 const u32be = (n: number) => [(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff];
 const u32le = (n: number) => [n & 0xff, (n >>> 8) & 0xff, (n >>> 16) & 0xff, (n >>> 24) & 0xff];
+
+const concatBytes = (parts: Uint8Array[]): Uint8Array => {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const part of parts) {
+    out.set(part, at);
+    at += part.length;
+  }
+  return out;
+};
 
 const hasBytes = (haystack: Uint8Array, needle: number[]): boolean => {
   outer: for (let i = 0; i + needle.length <= haystack.length; i++) {
@@ -414,5 +427,191 @@ describe("stripImageMetadata — unknown formats", () => {
     expect(stripImageMetadata(Uint8Array.from(ascii("GIF89a....."))).ok).toBe(false);
     expect(stripImageMetadata(new Uint8Array(0)).ok).toBe(false);
     expect(stripImageMetadata(Uint8Array.from([1, 2, 3])).ok).toBe(false);
+  });
+});
+
+// --- verification (LAC-2932) ---
+
+const expectClean = (bytes: Uint8Array, clean: boolean) => {
+  const result = verifyImageMetadataStripped(bytes);
+  if (!result.ok) throw new Error(`expected ok, got: ${result.reason}`);
+  expect(result.clean).toBe(clean);
+  return result;
+};
+
+const stripped = (bytes: Uint8Array) => {
+  const result = stripImageMetadata(bytes);
+  if (!result.ok) throw new Error(`expected ok, got: ${result.reason}`);
+  return result.data;
+};
+
+describe("verifyImageMetadataStripped — residue detection (LAC-2932)", () => {
+  it("flags a JPEG that still carries Exif, XMP, IPTC or COM", () => {
+    expect(expectClean(buildJpeg([exifApp1]), false).residue).toContain("APP1");
+    expect(expectClean(buildJpeg([xmpApp1]), false).residue).toContain("APP1");
+    expect(expectClean(buildJpeg([iptcApp13]), false).residue).toContain("APP13");
+    expect(expectClean(buildJpeg([jpegSegment(0xfe, ascii("at 12.34"))]), false).residue).toContain(
+      "COM"
+    );
+  });
+
+  it("passes a JPEG whose only app segments are needed for decoding", () => {
+    expectClean(buildJpeg([iccApp2]), true);
+    expectClean(buildJpeg([]), true);
+  });
+
+  // LAC-4972 F1. APP2 is ICC *and* MPF. iPhone HDR/depth and Samsung
+  // dual-camera files put a whole second JPEG in the MPF segment, Exif and
+  // GPS included, so "APP2 is a colour profile" is not safe by marker alone.
+  it("flags an APP2 segment that is not an ICC profile", () => {
+    const nested = buildJpeg([exifApp1]);
+    const mpf = jpegSegment(0xe2, [...ascii("MPF\0"), ...nested]);
+    expect(expectClean(buildJpeg([mpf]), false).residue).toContain("APP2");
+    expect(hasBytes(stripped(buildJpeg([mpf])), GPS_TAG_LE)).toBe(false);
+    expectClean(stripped(buildJpeg([mpf])), true);
+  });
+
+  // LAC-4972 A1. Same shape as F1 one marker over: APP0 is JFIF *and* JFXX,
+  // and a JFXX extension_code 0x10 is a nested JPEG thumbnail that brings
+  // its own APP1. A pass by marker let that thumbnail keep its GPS.
+  it("flags an APP0 segment that is not JFIF", () => {
+    const jfxx = jpegSegment(0xe0, [...ascii("JFXX\0"), 0x10, ...buildJpeg([exifApp1])]);
+    const input = buildJpeg([jfxx]);
+    expect(hasBytes(input, GPS_TAG_LE)).toBe(true);
+    expect(expectClean(input, false).residue).toContain("APP0");
+    expect(hasBytes(stripped(input), GPS_TAG_LE)).toBe(false);
+    // The file's own JFIF APP0 is decode data and stays.
+    expect(hasBytes(stripped(input), ascii("JFIF"))).toBe(true);
+    expectClean(stripped(input), true);
+  });
+
+  // Every allowlisted marker now has to identify itself, APP14 included.
+  it("passes an Adobe APP14 and flags one that is not", () => {
+    const adobe = jpegSegment(0xee, [...ascii("Adobe"), 0x64, 0, 0, 0, 0, 0]);
+    expectClean(buildJpeg([adobe]), true);
+    const spoofed = jpegSegment(0xee, [...ascii("Exif\0\0"), ...tiffWithGps()]);
+    expect(expectClean(buildJpeg([spoofed]), false).residue).toContain("APP14");
+    expect(hasBytes(stripped(buildJpeg([spoofed])), GPS_TAG_LE)).toBe(false);
+  });
+
+  // Allowlist, not blocklist: an APPn nobody vetted is residue, not cargo.
+  it("flags other metadata-bearing APPn segments", () => {
+    const app3 = jpegSegment(0xe3, [...ascii("Meta\0\0"), ...tiffWithGps()]);
+    const app11 = jpegSegment(0xeb, [...ascii("JP"), ...tiffWithGps()]);
+    expect(expectClean(buildJpeg([app3]), false).residue).toContain("APP3");
+    expect(expectClean(buildJpeg([app11]), false).residue).toContain("APP11");
+    expect(hasBytes(stripped(buildJpeg([app3, app11])), GPS_TAG_LE)).toBe(false);
+  });
+
+  // LAC-4972 F2. Both passes used to stop at SOS/IEND and never look past
+  // it, so an appended Exif block rode along and still verified clean.
+  // Samsung SEF trailers and Google motion photos live exactly there.
+  it("flags bytes trailing past EOI, and strips them", () => {
+    const withTrailer = concatBytes([buildJpeg([]), Uint8Array.from(exifApp1)]);
+    expect(hasBytes(withTrailer, GPS_TAG_LE)).toBe(true);
+    expect(expectClean(withTrailer, false).residue).toContain("trailing");
+    const clean = stripped(withTrailer);
+    expect(hasBytes(clean, GPS_TAG_LE)).toBe(false);
+    expectClean(clean, true);
+  });
+
+  it("flags bytes trailing past IEND, and strips them", () => {
+    const withTrailer = concatBytes([
+      buildPng([]),
+      Uint8Array.from(pngChunk("eXIf", tiffWithGps())),
+    ]);
+    expect(hasBytes(withTrailer, GPS_TAG_LE)).toBe(true);
+    expect(expectClean(withTrailer, false).residue).toContain("trailing");
+    const clean = stripped(withTrailer);
+    expect(hasBytes(clean, GPS_TAG_LE)).toBe(false);
+    expectClean(clean, true);
+  });
+
+  it("fails closed on a JPEG with no EOI and a PNG with no IEND", () => {
+    const noEoi = Uint8Array.from([0xff, 0xd8, ...jpegSegment(0xe0, [...ascii("JFIF\0")])]);
+    expect(verifyImageMetadataStripped(noEoi).ok).toBe(false);
+    expect(stripImageMetadata(noEoi).ok).toBe(false);
+    const noIend = Uint8Array.from([
+      ...PNG_SIG,
+      ...pngChunk("IHDR", [...u32be(1), ...u32be(1), 8, 6, 0, 0, 0]),
+    ]);
+    expect(verifyImageMetadataStripped(noIend).ok).toBe(false);
+    expect(stripImageMetadata(noIend).ok).toBe(false);
+  });
+
+  it("flags PNG metadata chunks and passes a clean PNG", () => {
+    expect(expectClean(buildPng([pngChunk("eXIf", tiffWithGps())]), false).residue).toContain(
+      "eXIf"
+    );
+    expect(
+      expectClean(buildPng([pngChunk("iTXt", ascii("xmp\0\0\0\0\0<gps/>"))]), false).residue
+    ).toContain("iTXt");
+    expectClean(buildPng([]), true);
+  });
+
+  it("flags WebP EXIF/XMP chunks, and a VP8X flag left set with no chunk", () => {
+    expect(
+      expectClean(buildWebp([vp8x(0x08), webpChunk("EXIF", tiffWithGps())]), false).residue
+    ).toContain("EXIF");
+    expect(
+      expectClean(buildWebp([vp8x(0x04), webpChunk("XMP ", ascii("<gps/>"))]), false).residue
+    ).toContain("XMP");
+    // Chunk gone but the container still advertises it: readers go looking.
+    expect(
+      expectClean(buildWebp([vp8x(0x08), webpChunk("VP8 ", [1, 2])]), false).residue
+    ).toContain("VP8X");
+    expectClean(buildWebp([vp8x(0x20), webpChunk("VP8 ", [1, 2])]), true);
+  });
+
+  // LAC-4972 F3. The flag bits used to be cleared only when a chunk was
+  // also removed, so a file advertising EXIF it did not contain came out of
+  // the stripper unchanged and then failed verification — a rejection the
+  // uploader could not fix by retrying.
+  it("clears a stale VP8X flag even when there is no chunk to drop", () => {
+    const stale = buildWebp([vp8x(0x08), webpChunk("VP8 ", [1, 2])]);
+    const result = stripImageMetadata(stale);
+    if (!result.ok) throw new Error(`expected ok, got: ${result.reason}`);
+    expect(result.changed).toBe(true);
+    expectClean(result.data, true);
+  });
+
+  it("flags a HEIF whose Exif/XMP item payloads are still populated", () => {
+    const { bytes } = buildHeif([heifExifItem(), heifXmpItem()]);
+    expect(expectClean(bytes, false).residue).toMatch(/Exif|XMP/);
+  });
+
+  it("fails closed rather than passing bytes it cannot parse", () => {
+    expect(
+      verifyImageMetadataStripped(Uint8Array.from([0xff, 0xd8, 0xff, 0xe1, 0xff, 0xff, 0x00])).ok
+    ).toBe(false);
+    expect(verifyImageMetadataStripped(Uint8Array.from(ascii("GIF89a....."))).ok).toBe(false);
+    expect(verifyImageMetadataStripped(new Uint8Array(0)).ok).toBe(false);
+  });
+});
+
+describe("verifyImageMetadataStripped — strip output verifies clean (LAC-2932)", () => {
+  it("passes stripped JPEG, PNG and WebP output", () => {
+    expectClean(stripped(buildJpeg([exifApp1, xmpApp1, iptcApp13])), true);
+    expectClean(
+      stripped(
+        buildPng([pngChunk("eXIf", tiffWithGps()), pngChunk("tEXt", ascii("GPSLatitude\0 12.34"))])
+      ),
+      true
+    );
+    expectClean(stripped(buildWebp([vp8x(0x0c), webpChunk("EXIF", tiffWithGps())])), true);
+  });
+
+  it("passes blanked HEIF output, which a second strip pass cannot tell you", () => {
+    const { bytes } = buildHeif([heifExifItem(), heifXmpItem()]);
+    const clean = stripped(bytes);
+    expectClean(clean, true);
+
+    // Why verification is its own function: the HEIF stripper blanks payloads
+    // in place and leaves the iinf/iloc declarations, so re-running it on
+    // already-clean bytes still reports `changed: true`. "Did we write?" is
+    // not "is it clean?".
+    const second = stripImageMetadata(clean);
+    if (!second.ok) throw new Error("expected ok");
+    expect(second.changed).toBe(true);
   });
 });

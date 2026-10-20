@@ -16,7 +16,10 @@ import {
   podMembers,
   pods,
 } from "@/server/db/pods-schema";
-import { stripImageMetadata } from "@/server/services/pod-media-metadata";
+import {
+  stripImageMetadata,
+  verifyImageMetadataStripped,
+} from "@/server/services/pod-media-metadata";
 import * as policy from "@/server/services/pod-policy";
 import * as reactions from "@/server/services/pod-reactions";
 import { collectMediaKeys, deleteObjectsWithRetry } from "@/server/services/pod-storage-cleanup";
@@ -747,6 +750,7 @@ export const finalizeUpload = async (input: {
   const config = loadStorageConfig();
 
   let exifStrippedAt: Date | undefined;
+  let exifVerifiedAt: Date | undefined;
   let strippedSize: number | undefined;
   if (media.type === "photo" && media.storageKey && config.provider !== "vercel-blob") {
     const objectRes = await fetch(
@@ -760,7 +764,8 @@ export const finalizeUpload = async (input: {
     if (!objectRes.ok) {
       throw new Error(`Could not read uploaded object (HTTP ${objectRes.status})`);
     }
-    const stripped = stripImageMetadata(new Uint8Array(await objectRes.arrayBuffer()));
+    const original = new Uint8Array(await objectRes.arrayBuffer());
+    const stripped = stripImageMetadata(original);
     if (!stripped.ok) {
       // The row stays `processing` and never becomes visible; orphan
       // cleanup belongs to the LAC-2855 §3 worker.
@@ -792,6 +797,21 @@ export const finalizeUpload = async (input: {
       strippedSize = stripped.data.byteLength;
     }
     exifStrippedAt = new Date();
+
+    // Separate event, separate timestamp (LAC-2932): the strip above says
+    // what we did, this says what is actually left in the bytes we stored.
+    // Re-walking the container catches a stripper that missed a segment,
+    // which is the whole failure mode S4 cares about.
+    const verified = verifyImageMetadataStripped(stripped.changed ? stripped.data : original);
+    if (!verified.ok) {
+      throw new Error(
+        `Upload rejected — stored image could not be verified metadata-free: ${verified.reason}`
+      );
+    }
+    if (!verified.clean) {
+      throw new Error(`Upload rejected — metadata survived the strip: ${verified.residue}`);
+    }
+    exifVerifiedAt = new Date();
   }
 
   const publicUrl = media.storageKey ? publicUrlForKey(config, media.storageKey) : null;
@@ -807,6 +827,7 @@ export const finalizeUpload = async (input: {
       url: publicUrl ?? media.url,
       readyAt: media.type === "video" ? media.readyAt : new Date(),
       ...(exifStrippedAt ? { exifStripped: exifStrippedAt } : {}),
+      ...(exifVerifiedAt ? { exifVerified: exifVerifiedAt } : {}),
       ...(strippedSize != null ? { size: strippedSize } : {}),
     })
     .where(eq(podMedia.id, input.mediaId))
@@ -876,6 +897,19 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
       `Upload rejected — image could not be verified metadata-free: ${stripped.reason}`
     );
   }
+  const stripRanAt = new Date();
+  // Verify the bytes we are about to store, not just that a strip ran
+  // (LAC-2932). Fail-closed on anything left behind.
+  const verified = verifyImageMetadataStripped(stripped.data);
+  if (!verified.ok) {
+    throw new Error(
+      `Upload rejected — image could not be verified metadata-free: ${verified.reason}`
+    );
+  }
+  if (!verified.clean) {
+    throw new Error(`Upload rejected — metadata survived the strip: ${verified.residue}`);
+  }
+  const exifVerifiedAt = new Date();
   const cleanFile = new File([stripped.data as BlobPart], safeName, {
     type: contentType,
   });
@@ -906,7 +940,8 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
         url,
         mimeType: contentType,
         size: cleanFile.size,
-        exifStripped: new Date(),
+        exifStripped: stripRanAt,
+        exifVerified: exifVerifiedAt,
         caption: (formData.get("caption") as string) ?? null,
         readyAt: new Date(),
       })
