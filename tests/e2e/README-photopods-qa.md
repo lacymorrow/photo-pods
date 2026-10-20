@@ -5,13 +5,13 @@ Bootstraps the Playwright pass that backs the LAC-2860 MVP QA plan
 
 ## What ships in this bundle
 
-| Piece                                     | Path                                    | Purpose                                                                                                          |
-| ----------------------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Seed script for QA users + fixture pods   | `scripts/seed-qa-fixtures.ts`           | Creates credential users A + B and three fixture pods (private-A, public-A, private-B). Idempotent.              |
-| Playwright fixture                        | `tests/e2e/qa-fixtures.ts`              | SSO bypass, credentials sign-in, 4G throttle, manifest reader.                                                   |
-| Media generator                           | `scripts/gen-e2e-media.ts`              | Builds real JPEGs and MP4s at the size boundaries the plan calls out. Large files are NOT committed.             |
-| Committed EXIF fixture                    | `tests/e2e/fixtures/gps-tagged.jpg`     | Real JPEG with GPS EXIF for verifying the LAC-2917 strip step (S4).                                              |
-| Representative smoke spec (DoD for -3138) | `tests/e2e/qa-smoke.spec.ts`            | Signs in as A, creates a public pod, uploads a photo, deletes the pod.                                           |
+| Piece                                     | Path                                | Purpose                                                                                              |
+| ----------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Seed script for QA users + fixture pods   | `scripts/seed-qa-fixtures.ts`       | Creates credential users A + B and three fixture pods (private-A, public-A, private-B). Idempotent.  |
+| Playwright fixture                        | `tests/e2e/qa-fixtures.ts`          | SSO bypass, credentials sign-in, 4G throttle, manifest reader.                                       |
+| Media generator                           | `scripts/gen-e2e-media.ts`          | Builds real JPEGs and MP4s at the size boundaries the plan calls out. Large files are NOT committed. |
+| Committed EXIF fixture                    | `tests/e2e/fixtures/gps-tagged.jpg` | Real JPEG with GPS EXIF for verifying the LAC-2917 strip step (S4).                                  |
+| Representative smoke spec (DoD for -3138) | `tests/e2e/qa-smoke.spec.ts`        | Signs in as A, creates a public pod, uploads a photo, deletes the pod.                               |
 
 ## Required env
 

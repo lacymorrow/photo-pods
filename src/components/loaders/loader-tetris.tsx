@@ -56,7 +56,6 @@ export const LoaderTetris = ({
         <div className="tetromino box4" style={{ backgroundImage: `url('${svgUrl}')` }} />
       </div>
 
-      {/* eslint-disable-next-line react/no-unknown-property */}
       <style jsx>{`
         .tetrominos-wrapper {
           position: relative;

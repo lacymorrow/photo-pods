@@ -309,9 +309,7 @@ const PaymentService = {
               String(metadata.productId) === productIdStr ||
               String(metadata.variant_id) === productIdStr ||
               String(metadata.product_id) === productIdStr ||
-              // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- intentional boolean OR over optional chain results
               metadata.productName?.includes(productIdStr) ||
-              // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- intentional boolean OR over optional chain results
               metadata.variant_name?.includes(productIdStr) ||
               metadata.product_name?.includes(productIdStr)
             );

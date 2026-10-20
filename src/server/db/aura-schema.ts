@@ -155,31 +155,25 @@ export const recordingsRelations = relations(recordings, ({ many }) => ({
   conversations: many(conversations),
 }));
 
-export const conversationsRelations = relations(
-  conversations,
-  ({ one, many }) => ({
-    recording: one(recordings, {
-      fields: [conversations.recordingId],
-      references: [recordings.id],
-    }),
-    speakers: many(conversationSpeakers),
-    knowledge: many(knowledgeEntries),
-  })
-);
+export const conversationsRelations = relations(conversations, ({ one, many }) => ({
+  recording: one(recordings, {
+    fields: [conversations.recordingId],
+    references: [recordings.id],
+  }),
+  speakers: many(conversationSpeakers),
+  knowledge: many(knowledgeEntries),
+}));
 
-export const conversationSpeakersRelations = relations(
-  conversationSpeakers,
-  ({ one }) => ({
-    conversation: one(conversations, {
-      fields: [conversationSpeakers.conversationId],
-      references: [conversations.id],
-    }),
-    speaker: one(speakers, {
-      fields: [conversationSpeakers.speakerId],
-      references: [speakers.id],
-    }),
-  })
-);
+export const conversationSpeakersRelations = relations(conversationSpeakers, ({ one }) => ({
+  conversation: one(conversations, {
+    fields: [conversationSpeakers.conversationId],
+    references: [conversations.id],
+  }),
+  speaker: one(speakers, {
+    fields: [conversationSpeakers.speakerId],
+    references: [speakers.id],
+  }),
+}));
 
 export const speakersRelations = relations(speakers, ({ many }) => ({
   conversations: many(conversationSpeakers),
@@ -194,27 +188,21 @@ export const peopleRelations = relations(people, ({ one, many }) => ({
   knowledge: many(personKnowledge),
 }));
 
-export const knowledgeEntriesRelations = relations(
-  knowledgeEntries,
-  ({ one, many }) => ({
-    conversation: one(conversations, {
-      fields: [knowledgeEntries.conversationId],
-      references: [conversations.id],
-    }),
-    people: many(personKnowledge),
-  })
-);
+export const knowledgeEntriesRelations = relations(knowledgeEntries, ({ one, many }) => ({
+  conversation: one(conversations, {
+    fields: [knowledgeEntries.conversationId],
+    references: [conversations.id],
+  }),
+  people: many(personKnowledge),
+}));
 
-export const personKnowledgeRelations = relations(
-  personKnowledge,
-  ({ one }) => ({
-    person: one(people, {
-      fields: [personKnowledge.personId],
-      references: [people.id],
-    }),
-    knowledge: one(knowledgeEntries, {
-      fields: [personKnowledge.knowledgeEntryId],
-      references: [knowledgeEntries.id],
-    }),
-  })
-);
+export const personKnowledgeRelations = relations(personKnowledge, ({ one }) => ({
+  person: one(people, {
+    fields: [personKnowledge.personId],
+    references: [people.id],
+  }),
+  knowledge: one(knowledgeEntries, {
+    fields: [personKnowledge.knowledgeEntryId],
+    references: [knowledgeEntries.id],
+  }),
+}));
