@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { formatDistanceToNowStrict } from "date-fns";
 import { Card } from "@/components/ui/card";
+import { isPodMediaRouteUrl } from "@/lib/pods/media-url";
 import { getPrivacyMeta } from "@/lib/pods/privacy";
 
 interface PodCardProps {
@@ -48,6 +49,9 @@ export const PodCard = ({ pod }: PodCardProps) => {
               fill
               className="object-cover transition-transform duration-300 group-hover:scale-105"
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+              // A private pod's preview comes from the membership-checked
+              // route, which the image optimizer cannot authenticate against.
+              unoptimized={isPodMediaRouteUrl(coverUrl)}
             />
           ) : (
             <div className={`flex h-full items-center justify-center ${privacy.accentBgTintClass}`}>

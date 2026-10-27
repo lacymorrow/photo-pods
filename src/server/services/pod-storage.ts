@@ -14,7 +14,8 @@
 
 import crypto from "node:crypto";
 
-import type { MediaType } from "@/server/db/pods-schema";
+import { POD_MEDIA_ROUTE_PREFIX } from "@/lib/pods/media-url";
+import type { MediaType, PodVisibility } from "@/server/db/pods-schema";
 
 export interface StorageConfig {
   provider: "r2" | "s3" | "vercel-blob";
@@ -225,6 +226,147 @@ export const publicUrlForKey = (config: StorageConfig, key: string): string | nu
 };
 
 export const isStorageConfigured = (): boolean => loadStorageConfig().provider !== "vercel-blob";
+
+// --- Serving policy ---
+
+/**
+ * Path of the membership-checked media route for one media row.
+ *
+ * Read paths hand this to clients instead of `podMedia.url` whenever the pod
+ * is not public, so the pod ACL stays in front of the bytes (LAC-3173).
+ */
+export const mediaRouteUrl = (mediaId: string): string => `${POD_MEDIA_ROUTE_PREFIX}${mediaId}`;
+
+/**
+ * Rewrite one media row's client-facing URLs according to the pod's
+ * visibility. Public pods keep their direct/CDN URL so the browser and CDN
+ * can cache it; everything else is pointed at the membership-checked route.
+ *
+ * `thumbnailUrl` is dropped rather than rewritten: the media route serves the
+ * original, and a stored thumbnail URL points at the same public object store
+ * as `url`, so passing it through would reopen the leak. Nothing populates
+ * `thumbnailUrl` today; this keeps it fail-closed if something starts to.
+ */
+export const applyMediaUrlPolicy = <T extends { id: string; url?: string | null }>(
+  row: T,
+  visibility: PodVisibility
+): T & { url: string | null; thumbnailUrl: string | null } => {
+  const isPublic = visibility === "public";
+  return {
+    ...row,
+    url: isPublic ? (row.url ?? null) : mediaRouteUrl(row.id),
+    thumbnailUrl: isPublic
+      ? ((row as { thumbnailUrl?: string | null }).thumbnailUrl ?? null)
+      : null,
+  };
+};
+
+/**
+ * Is this a URL our own object storage could have produced?
+ *
+ * The media route fetches `stream` URLs server-side, so this is the guard that
+ * keeps that from becoming an SSRF primitive. Today nothing user-supplied can
+ * reach `podMedia.url` — it is written only from a Vercel Blob `put()` result
+ * or from `publicUrlForKey` — but the proxy should not silently depend on
+ * that holding forever.
+ */
+export const isTrustedStorageUrl = (url: string, config: StorageConfig): boolean => {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:") return false;
+
+  // Vercel Blob fallback. The access level is part of the hostname:
+  // `<storeId>.{public,private}.blob.vercel-storage.com`.
+  if (
+    parsed.hostname === "blob.vercel-storage.com" ||
+    parsed.hostname.endsWith(".blob.vercel-storage.com")
+  ) {
+    return true;
+  }
+
+  for (const candidate of [config.publicBaseUrl, config.endpoint]) {
+    if (!candidate) continue;
+    try {
+      if (new URL(candidate).host === parsed.host) return true;
+    } catch {
+      // Misconfigured env value — ignore it rather than trusting it.
+    }
+  }
+  return false;
+};
+
+/**
+ * How the membership-checked media route should answer for one media row.
+ *
+ * `redirect` hands the viewer a URL. That is only safe when the URL is either
+ * meant to be public (public pod) or short-lived and unguessable (presigned).
+ * `stream` proxies the bytes through the route, which is what keeps the pod
+ * ACL in front of long-lived storage URLs.
+ */
+export type MediaServePlan =
+  { kind: "redirect"; url: string } | { kind: "stream"; url: string } | { kind: "not_found" };
+
+export interface PlanMediaServeInput {
+  visibility: PodVisibility;
+  storageKey: string | null;
+  url: string | null;
+  config: StorageConfig;
+  /**
+   * Short-lived presigned GET for an object key, or null when the backend
+   * can't presign (vercel-blob fallback, missing credentials, bad endpoint).
+   */
+  presignGet: (key: string) => string | null;
+}
+
+/**
+ * Decide how to serve one media row, given the pod's visibility.
+ *
+ * The rule that matters (LAC-3173): a non-public pod must never be handed a
+ * long-lived storage URL. The legacy `uploadPhoto` path writes photos to
+ * Vercel Blob at `access: "public"`, so redirecting a private-pod viewer to
+ * `media.url` leaks a URL that keeps working forever, for anyone, with no pod
+ * ACL in front of it — which makes the membership check on this route
+ * decorative. Proxy those bytes instead.
+ *
+ * Public pods keep redirecting: that media is public by design, and a
+ * redirect lets the CDN and the browser cache it without the app paying
+ * bandwidth for every view.
+ */
+export const planMediaServe = ({
+  visibility,
+  storageKey,
+  url,
+  config,
+  presignGet,
+}: PlanMediaServeInput): MediaServePlan => {
+  if (visibility === "public") {
+    if (storageKey) {
+      const cdnUrl = publicUrlForKey(config, storageKey);
+      if (cdnUrl) return { kind: "redirect", url: cdnUrl };
+      const signedUrl = presignGet(storageKey);
+      if (signedUrl) return { kind: "redirect", url: signedUrl };
+    }
+    if (url) return { kind: "redirect", url };
+    return { kind: "not_found" };
+  }
+
+  // Private/group. A presigned URL expires, so it is an acceptable handoff.
+  if (storageKey) {
+    const signedUrl = presignGet(storageKey);
+    if (signedUrl) return { kind: "redirect", url: signedUrl };
+  }
+  // Anything else we can only reach by URL — proxy it, never redirect. Note
+  // this is deliberately reached even when `publicUrlForKey` would have
+  // returned something: for a non-public pod that URL is the bug.
+  //
+  // Only our own storage gets fetched server-side; see `isTrustedStorageUrl`.
+  if (url && isTrustedStorageUrl(url, config)) return { kind: "stream", url };
+  return { kind: "not_found" };
+};
 
 // --- Object mutation helpers ---
 

@@ -24,6 +24,7 @@ import * as policy from "@/server/services/pod-policy";
 import * as reactions from "@/server/services/pod-reactions";
 import { collectMediaKeys, deleteObjectsWithRetry } from "@/server/services/pod-storage-cleanup";
 import {
+  applyMediaUrlPolicy,
   buildStorageKey,
   isStorageConfigured,
   loadStorageConfig,
@@ -251,13 +252,22 @@ export const getUserPods = async () => {
     orderBy: [desc(podMembers.joinedAt)],
   });
 
-  return memberships.map((m) => ({
-    ...m.pod,
-    role: m.role,
-    memberCount: m.pod.memberCount ?? m.pod.members.length,
-    photoCount: m.pod.mediaCount ?? 0,
-    latestPhoto: m.pod.media[0] ?? null,
-  }));
+  return memberships.map((m) => {
+    // `media` is only queried to build the preview below. Spreading it would
+    // ship the raw row — public storage URL included — to the client and
+    // defeat the rewrite (LAC-3173). No caller reads it.
+    const { media, ...pod } = m.pod;
+    const latest = media[0];
+    return {
+      ...pod,
+      role: m.role,
+      memberCount: pod.memberCount ?? pod.members.length,
+      photoCount: pod.mediaCount ?? 0,
+      // Same rule as getPodPhotos: a private/group pod's preview must not
+      // carry the public storage URL (LAC-3173).
+      latestPhoto: latest ? applyMediaUrlPolicy(latest, pod.visibility) : null,
+    };
+  });
 };
 
 // --- Discovery (public pods) ---
@@ -1040,7 +1050,10 @@ export const getPodPhotos = async (podId: string, cursor?: string, limit = 50) =
   const own = viewer.userId ? await reactions.getViewerReactions(mediaIds, viewer.userId) : {};
 
   const photos = rows.map((row) => ({
-    ...row,
+    // Non-public pods must never receive the long-lived storage URL — the
+    // legacy blob path stores photos publicly, so that URL bypasses the pod
+    // ACL for anyone who ever sees it (LAC-3173).
+    ...applyMediaUrlPolicy(row, ctx.pod.visibility),
     reactionCounts: counts[row.id] ?? {},
     viewerReaction: own[row.id] ?? null,
   }));
