@@ -171,6 +171,10 @@ export const PhotoGrid = ({ photos, canDelete, currentUserId }: PhotoGridProps) 
                 width={1200}
                 height={800}
                 className="h-auto max-h-[80vh] w-full object-contain"
+                // The dialog is `max-w-5xl` (1024px), so without this the
+                // loader is asked for a 1200/2048 pair picked off `width`
+                // rather than the box it actually renders in.
+                sizes="(max-width: 1024px) 100vw, 1024px"
                 priority
                 loader={
                   isPodMediaRouteUrl(selectedPhoto.url ?? selectedPhoto.thumbnailUrl)
