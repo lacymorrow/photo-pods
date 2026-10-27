@@ -11,6 +11,7 @@
  */
 
 import { finalizeUpload, requestPresignedUpload, uploadPhoto } from "@/server/actions/pods";
+import { isHeicFile } from "@/lib/pods/heic";
 import { stripExifClientSide } from "@/lib/pods/strip-exif-client";
 
 /**
@@ -37,7 +38,11 @@ export const uploadPodPhoto = async (podId: string, file: File): Promise<void> =
   // EXIF/XMP/IPTC segment before bytes leave the browser. No-op for non-image
   // mimes (videos handled by their own path). Bypassable by a hostile client
   // so the LAC-2855 §3 finalize worker must re-enforce server-side.
-  const uploadFile = file.type.startsWith("image/") ? await stripExifClientSide(file) : file;
+  // `isHeicFile` widens the gate past the mime check: a .heic can arrive with
+  // an empty `type` (see `heic.ts`), and that file both needs the strip and is
+  // the one the HEIC transcode has to reach (LAC-5712).
+  const isImage = file.type.startsWith("image/") || isHeicFile(file);
+  const uploadFile = isImage ? await stripExifClientSide(file) : file;
 
   const presigned = await requestPresignedUpload({
     podId,
