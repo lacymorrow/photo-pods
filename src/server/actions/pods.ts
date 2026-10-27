@@ -601,7 +601,16 @@ const checkUploadRateLimit = (userId: string): void => {
 
 // --- Media: presigned upload flow ---
 
-const PHOTO_MIMES = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]);
+// HEIC/HEIF are deliberately absent (LAC-5717). The browser transcodes them
+// to JPEG before upload (LAC-5712), so after that change nothing legitimate
+// sends HEIC and a HEIC arriving here means the client-side decode failed.
+// Accepting it stored bytes that no reader in this app can render — neither
+// a Chromium `<img>` nor this build's sharp — and the user saw a successful
+// upload with a permanently broken tile. A rejection the uploader can act on
+// is better, and it closes the hostile-client case of storing media we
+// already know we cannot display. The browse `accept` still offers HEIC on
+// purpose: that is the picker, and the transcode runs before this gate.
+const PHOTO_MIMES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const VIDEO_MIMES = new Set(["video/mp4", "video/quicktime", "video/webm"]);
 const MAX_PHOTO_BYTES = 50 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
@@ -611,8 +620,6 @@ const extForMime = (mime: string): string => {
     "image/jpeg": "jpg",
     "image/png": "png",
     "image/webp": "webp",
-    "image/heic": "heic",
-    "image/heif": "heif",
     "video/mp4": "mp4",
     "video/quicktime": "mov",
     "video/webm": "webm",
@@ -879,7 +886,7 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
   if (!file) throw new Error("No file provided");
   const contentType = file.type.toLowerCase();
   if (!PHOTO_MIMES.has(contentType)) {
-    throw new Error("Invalid file type. Allowed: JPEG, PNG, WebP, HEIC");
+    throw new Error("Invalid file type. Allowed: JPEG, PNG, WebP.");
   }
   if (typeof file.size !== "number" || file.size <= 0 || file.size > MAX_PHOTO_BYTES) {
     throw new Error(`File size ${file.size} bytes exceeds max ${MAX_PHOTO_BYTES} bytes for photo`);

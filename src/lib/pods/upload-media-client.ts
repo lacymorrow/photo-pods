@@ -10,8 +10,9 @@
  * @module lib/pods/upload-media-client
  */
 
-import { finalizeUpload, requestPresignedUpload, uploadPhoto } from "@/server/actions/pods";
+import { isHeicFile } from "@/lib/pods/heic";
 import { stripExifClientSide } from "@/lib/pods/strip-exif-client";
+import { finalizeUpload, requestPresignedUpload, uploadPhoto } from "@/server/actions/pods";
 
 /**
  * Best-effort dimension probe so `finalizeUpload` can persist width/height —
@@ -37,7 +38,20 @@ export const uploadPodPhoto = async (podId: string, file: File): Promise<void> =
   // EXIF/XMP/IPTC segment before bytes leave the browser. No-op for non-image
   // mimes (videos handled by their own path). Bypassable by a hostile client
   // so the LAC-2855 §3 finalize worker must re-enforce server-side.
-  const uploadFile = file.type.startsWith("image/") ? await stripExifClientSide(file) : file;
+  // `isHeicFile` widens the gate past the mime check: a .heic can arrive with
+  // an empty `type` (see `heic.ts`), and that file both needs the strip and is
+  // the one the HEIC transcode has to reach (LAC-5712).
+  const isImage = file.type.startsWith("image/") || isHeicFile(file);
+  const uploadFile = isImage ? await stripExifClientSide(file) : file;
+
+  // Still HEIC here means the browser transcode (LAC-5712) failed. The server
+  // no longer accepts HEIC, so this would fail at `requestPresignedUpload`
+  // anyway with "Unsupported content type: image/heic". Throwing here instead
+  // says something the uploader can act on, and keeps the fallback path from
+  // quietly storing bytes nothing in the app can render (LAC-5717).
+  if (isHeicFile(uploadFile)) {
+    throw new Error("This HEIC photo wouldn't convert. Upload a JPEG copy instead.");
+  }
 
   const presigned = await requestPresignedUpload({
     podId,

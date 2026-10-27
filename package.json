@@ -210,6 +210,7 @@
     "geist": "1.7.2",
     "googleapis": "^171.4.0",
     "gray-matter": "4.0.3",
+    "heic2any": "^0.0.4",
     "holy-loader": "2.3.14",
     "input-otp": "^1.5.0",
     "jotai": "2.17.1",

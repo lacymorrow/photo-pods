@@ -9,6 +9,9 @@
  * @module lib/pods/strip-exif-client
  */
 
+import { transcodeHeicToJpeg } from "@/lib/pods/decode-heic-client";
+import { isHeicFile } from "@/lib/pods/heic";
+
 const CANVAS_MIME_FALLBACK = "image/jpeg";
 const JPEG_QUALITY = 0.92;
 
@@ -31,13 +34,27 @@ const canvasCompatibleMime = (mime: string): string => {
  * file — the server enforces the EXIF check as a backstop.
  */
 export const stripExifClientSide = async (file: File): Promise<File> => {
-  if (typeof window === "undefined" || !file.type.startsWith("image/")) {
+  // Some platforms (notably Windows) hand over a .heic with an empty
+  // `type`, which `isHeicFile` exists to catch. `photo-upload.tsx` already
+  // stages those files, so they have to be processed here too — otherwise
+  // they reach `requestPresignedUpload` with `contentType: ""` and the
+  // upload fails outright against `PHOTO_MIMES` (LAC-5712).
+  if (typeof window === "undefined" || !(file.type.startsWith("image/") || isHeicFile(file))) {
     return file;
   }
   const outMime = canvasCompatibleMime(file.type);
 
   const bitmap = await loadBitmap(file);
-  if (!bitmap) return file;
+  if (!bitmap) {
+    // The browser has no decoder for these bytes. The one format this app
+    // invites that browsers routinely cannot read is HEIC/HEIF, so try the
+    // wasm decoder before giving up and shipping bytes nothing can display
+    // (LAC-5712). Its JPEG output is already EXIF/XMP/IPTC-free, so it
+    // satisfies this function's contract without a canvas round-trip.
+    // Native decode is attempted first on purpose: Safari reads HEIC itself,
+    // and that path costs no download at all.
+    return (await transcodeHeicToJpeg(file)) ?? file;
+  }
 
   const canvas = document.createElement("canvas");
   canvas.width = bitmap.width;
