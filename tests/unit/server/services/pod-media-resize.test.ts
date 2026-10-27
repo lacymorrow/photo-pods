@@ -184,3 +184,31 @@ describe("resizeMediaImage decodes on sniffed format, not the declared label", (
     ).toBeNull();
   });
 });
+
+/**
+ * The `heif` rung in the allowlist is reachable, so it is not dead code — but
+ * only for AV1-coded input. This build's libheif has no HEVC, which is what an
+ * iPhone .heic actually uses, so that case falls through to the original.
+ * Pinning the half that works keeps the distinction visible.
+ */
+describe("the heif rung covers AVIF, which is all this build decodes", () => {
+  it("resizes AV1-coded heif input", async () => {
+    const avif = await sharp({
+      create: { width: 1600, height: 1200, channels: 3, background: "#2244aa" },
+    })
+      .heif({ compression: "av1", quality: 50 })
+      .toBuffer();
+    expect((await sharp(avif).metadata()).format).toBe("heif");
+
+    const resized = await resizeMediaImage(
+      avif.buffer.slice(avif.byteOffset, avif.byteOffset + avif.byteLength) as ArrayBuffer,
+      { width: 640, quality: 75 }
+    );
+    expect(resized).not.toBeNull();
+    expect((await sharp(resized?.body ?? Buffer.alloc(0)).metadata()).width).toBe(640);
+  });
+
+  it("has no HEVC encoder, which is why iPhone heic does not resize", () => {
+    expect(sharp.format.heif.input.fileSuffix).toEqual([".avif"]);
+  });
+});
