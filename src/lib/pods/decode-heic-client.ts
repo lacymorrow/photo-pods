@@ -95,6 +95,8 @@ export const jpegFilename = (name: string): string =>
  * module-cached so re-importing will not re-run that line, so the only way to
  * ever rebuild the worker is to record the URL as it goes past. The URL stays
  * valid for the life of the document: heic2any never revokes it.
+ *
+ * Identified by instance, not by arrival order (LAC-5720). See `loadHeic2Any`.
  */
 let workerScriptUrl: string | null = null;
 
@@ -108,14 +110,22 @@ const loadHeic2Any = (): Promise<Heic2Any> => {
     // decode itself is heic2any's problem, so just import and let it fail
     // however it fails.
     const RealWorker = typeof window.Worker === "function" ? window.Worker : null;
+
+    // Every Worker built while the import is in flight, not just the last
+    // one (LAC-5720). That window is a chunk fetch plus a module eval, wide
+    // enough for unrelated app code to build a Worker of its own, and
+    // rebuilding from a foreign script would hand the user's photo buffer to
+    // something that never asked for it.
+    const built: { url: string; instance: Worker }[] = [];
     if (RealWorker) {
       // One-shot, and restored in `finally` before any caller gets control
       // back. A Proxy rather than a wrapper function so `instanceof`, the
       // prototype and the static shape of `Worker` are all untouched.
       window.Worker = new Proxy(RealWorker, {
         construct(target, args: [string | URL, WorkerOptions?]) {
-          workerScriptUrl = String(args[0]);
-          return Reflect.construct(target, args);
+          const instance: Worker = Reflect.construct(target, args);
+          built.push({ url: String(args[0]), instance });
+          return instance;
         },
       });
     }
@@ -123,6 +133,14 @@ const loadHeic2Any = (): Promise<Heic2Any> => {
       return (await import("heic2any")).default;
     } finally {
       if (RealWorker) window.Worker = RealWorker;
+      // heic2any assigns its worker to the global as it constructs it, so
+      // whichever instance is still sitting there once the import settles is
+      // identifiably heic2any's. Matching on identity means no other Worker
+      // in the window can be mistaken for it, and an upgrade that stops
+      // publishing the global leaves this null — nothing to rebuild from,
+      // which is the honest answer rather than a guess.
+      const own = (window as Window & { __heic2any__worker?: Worker }).__heic2any__worker;
+      workerScriptUrl = built.find((w) => w.instance === own)?.url ?? null;
     }
   })();
 
@@ -237,10 +255,19 @@ export const transcodeHeicToJpeg = async (file: File): Promise<File | null> => {
   const first = await decodeOnce(file);
   if (first.file) return first.file;
 
-  // A timeout has already cost the user DECODE_TIMEOUT_MS, and doubling that
-  // wait buys nothing: the heap corruption this retry exists for fails in
-  // milliseconds, not minutes.
-  if (first.timedOut) return null;
+  // Repair but do not retry on a timeout (LAC-5720). Retrying would double a
+  // wait that has already cost the user DECODE_TIMEOUT_MS and buy nothing.
+  // Repairing is a different question: a corrupted worker is one of the
+  // things that produces a hang rather than a fast error — measured in
+  // headless Chromium, two of three corrupt-then-rebuild cycles ended in a
+  // decode that never settled — and a worker left corrupted hangs the next
+  // HEIC too, which `photo-upload.tsx` serialises across a multi-file
+  // selection. The rebuild loses no state and is harmless when the timeout
+  // was only a slow legitimate file on a slow phone.
+  if (first.timedOut) {
+    rebuildHeic2AnyWorker();
+    return null;
+  }
   if (!rebuildHeic2AnyWorker()) return null;
 
   return (await decodeOnce(file)).file;

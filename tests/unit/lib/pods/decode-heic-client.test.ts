@@ -27,13 +27,29 @@ const mocks = vi.hoisted(() => {
   return { heic2any: vi.fn(), terminate, constructed, FakeWorker };
 });
 
+/** The URL heic2any's own worker is built from, per the mock below. */
+const HEIC2ANY_WORKER_URL = "blob:heic2any-fake-worker";
+
+/**
+ * An unrelated Worker built inside the same import window, which the capture
+ * trap also sees (LAC-5720 finding 5). Rebuilding from this URL would
+ * `postMessage` the user's photo buffer to a script that never asked for it.
+ */
+const FOREIGN_WORKER_URL = "blob:some-other-app-worker";
+
 vi.mock("heic2any", () => {
   // Mirrors heic2any 0.0.4, which assigns `window.__heic2any__worker` once at
   // module top level and never re-creates it. That one-shot is the whole
   // reason the transcoder has to capture the worker URL on the way past.
-  (globalThis as unknown as { __heic2any__worker?: unknown }).__heic2any__worker = new (
-    globalThis as unknown as { Worker: new (u: string) => unknown }
-  ).Worker("blob:heic2any-fake-worker");
+  const scope = globalThis as unknown as {
+    __heic2any__worker?: unknown;
+    Worker: new (u: string) => unknown;
+  };
+  scope.__heic2any__worker = new scope.Worker(HEIC2ANY_WORKER_URL);
+  // Stands in for app code that happens to spin up a Worker of its own while
+  // the ~343 KB decoder chunk is still loading. Built *after* heic2any's, so
+  // keeping the last captured URL would pick this one.
+  new scope.Worker(FOREIGN_WORKER_URL);
   return { default: mocks.heic2any };
 });
 
@@ -171,7 +187,13 @@ describe("transcodeHeicToJpeg (LAC-5712)", () => {
     // Rebuilt from the URL captured when heic2any built its own worker, which
     // is the only handle on that script: a Worker does not expose it, and the
     // module-cached import will not re-run the line that created it.
-    expect(mocks.constructed).toEqual(["blob:heic2any-fake-worker"]);
+    //
+    // And it is heic2any's worker, not the foreign one the mock builds right
+    // after it in the same import window (LAC-5720 finding 5). The module
+    // matches on instance identity against `window.__heic2any__worker`, so
+    // arrival order cannot pick the wrong script.
+    expect(mocks.constructed).toEqual([HEIC2ANY_WORKER_URL]);
+    expect(mocks.constructed).not.toContain(FOREIGN_WORKER_URL);
   });
 
   it("gives up after the single retry instead of looping on a file that cannot decode", async () => {
@@ -193,10 +215,13 @@ describe("transcodeHeicToJpeg (LAC-5712)", () => {
     await vi.advanceTimersByTimeAsync(60_000);
 
     expect(await pending).toBeNull();
-    // A timeout is not evidence of a corrupted worker, and retrying would
-    // cost the user another full minute.
+    // Retrying would cost the user another full minute for nothing.
     expect(mocks.heic2any).toHaveBeenCalledTimes(1);
-    expect(mocks.terminate).not.toHaveBeenCalled();
+    // Repairing is the other half, and it is not the same decision
+    // (LAC-5720). A corrupted worker is one of the things that hangs instead
+    // of erroring, and left alone it hangs the next HEIC too.
+    expect(mocks.terminate).toHaveBeenCalledOnce();
+    expect(mocks.constructed).toEqual([HEIC2ANY_WORKER_URL]);
   });
 
   it("stays pending while the decode is still inside the timeout", async () => {
