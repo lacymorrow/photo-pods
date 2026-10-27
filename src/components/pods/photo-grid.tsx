@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { isPodMediaRouteUrl } from "@/lib/pods/media-url";
 import { REACTIONS, type ReactionCounts } from "@/lib/pods/reactions";
 import { deletePhoto, reactToMedia } from "@/server/actions/pods";
 import { ReactionsTray } from "./reactions-tray";
@@ -119,6 +120,10 @@ export const PhotoGrid = ({ photos, canDelete, currentUserId }: PhotoGridProps) 
                 height={300}
                 className="h-auto w-full object-cover transition-transform hover:scale-105"
                 sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                // Media behind the pod ACL has to be fetched by the browser,
+                // which carries the session cookie; the image optimizer does
+                // not. See isPodMediaRouteUrl.
+                unoptimized={isPodMediaRouteUrl(src)}
               />
               {totalReactions > 0 && (
                 <span className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-0.5 rounded-full bg-black/45 px-2 py-0.5 text-[11px] text-white backdrop-blur-sm">
@@ -167,6 +172,7 @@ export const PhotoGrid = ({ photos, canDelete, currentUserId }: PhotoGridProps) 
                 height={800}
                 className="h-auto max-h-[80vh] w-full object-contain"
                 priority
+                unoptimized={isPodMediaRouteUrl(selectedPhoto.url ?? selectedPhoto.thumbnailUrl)}
               />
               <div className="absolute right-0 bottom-0 left-0 space-y-3 bg-gradient-to-t from-black/85 to-transparent p-4">
                 <ReactionsTray

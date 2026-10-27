@@ -4,6 +4,7 @@ import JSZip from "jszip";
 import { Download, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { extensionFor } from "@/lib/pods/media-extension";
 
 interface DownloadAllButtonProps {
   podName: string;
@@ -29,12 +30,17 @@ export const DownloadAllButton = ({ podName, photos }: DownloadAllButtonProps) =
         if (!photo) continue;
         try {
           const response = await fetch(photo.url);
-          const blob = await response.blob();
-          const ext = photo.url.split(".").pop()?.split("?")[0] ?? "jpg";
-          const name = photo.caption
-            ? `${photo.caption.slice(0, 50).replace(/[^a-zA-Z0-9-_ ]/g, "")}.${ext}`
-            : `photo-${String(i + 1).padStart(3, "0")}.${ext}`;
-          folder.file(name, blob);
+          // The media route answers 401/403 when the pod ACL rejects the
+          // viewer; zipping that JSON body as a photo would be worse than
+          // skipping it.
+          if (response.ok) {
+            const blob = await response.blob();
+            const ext = extensionFor(blob.type, photo.url);
+            const name = photo.caption
+              ? `${photo.caption.slice(0, 50).replace(/[^a-zA-Z0-9-_ ]/g, "")}.${ext}`
+              : `photo-${String(i + 1).padStart(3, "0")}.${ext}`;
+            folder.file(name, blob);
+          }
         } catch {
           // Skip failed downloads
         }
