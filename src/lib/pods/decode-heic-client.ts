@@ -42,6 +42,8 @@
  * @module lib/pods/decode-heic-client
  */
 
+import type heic2anyDefault from "heic2any";
+
 import { isHeicFile } from "@/lib/pods/heic";
 
 /**
@@ -77,7 +79,8 @@ const DECODE_TIMEOUT_MS = 60_000;
 /** Race sentinel. `const` + `Symbol()` infers `unique symbol`, so `===` narrows. */
 const TIMED_OUT = Symbol("heic-decode-timeout");
 
-type Heic2Any = (opts: { blob: Blob; toType: string; quality: number }) => Promise<Blob | Blob[]>;
+/** Type-only, so the ~343 KB chunk still only loads behind the dynamic import. */
+type Heic2Any = typeof heic2anyDefault;
 
 /** Swap a `.heic`/`.heif` extension for `.jpg`, since the bytes are now JPEG. */
 export const jpegFilename = (name: string): string =>
@@ -117,7 +120,7 @@ const loadHeic2Any = (): Promise<Heic2Any> => {
       });
     }
     try {
-      return (await import("heic2any")).default as unknown as Heic2Any;
+      return (await import("heic2any")).default;
     } finally {
       if (RealWorker) window.Worker = RealWorker;
     }
