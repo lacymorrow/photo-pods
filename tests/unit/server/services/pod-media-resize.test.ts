@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { isResizableImageMime, resizeMediaImage } from "@/server/services/pod-media-resize";
+import { isResizeCandidateMime, resizeMediaImage } from "@/server/services/pod-media-resize";
 
 /** Narrows the nullable resize result; a null here is itself the failure. */
 const mustResize = async (
@@ -83,25 +83,104 @@ describe("resizeMediaImage", () => {
   });
 });
 
-describe("isResizableImageMime", () => {
-  it("accepts the raster formats a phone uploads", () => {
-    expect(isResizableImageMime("image/jpeg")).toBe(true);
-    expect(isResizableImageMime("image/png")).toBe(true);
-    expect(isResizableImageMime("image/heic")).toBe(true);
-    expect(isResizableImageMime("IMAGE/JPEG")).toBe(true);
-    expect(isResizableImageMime("image/jpeg; charset=binary")).toBe(true);
+/**
+ * A routing hint, not a gate. The gate is the byte sniff, covered above.
+ */
+describe("isResizeCandidateMime", () => {
+  it("accepts exactly the uploadable photo types (PHOTO_MIMES, pods.ts:604)", () => {
+    expect(isResizeCandidateMime("image/jpeg")).toBe(true);
+    expect(isResizeCandidateMime("image/png")).toBe(true);
+    expect(isResizeCandidateMime("image/webp")).toBe(true);
+    expect(isResizeCandidateMime("image/heic")).toBe(true);
+    expect(isResizeCandidateMime("image/heif")).toBe(true);
+    expect(isResizeCandidateMime("IMAGE/JPEG")).toBe(true);
+    expect(isResizeCandidateMime("image/jpeg; charset=binary")).toBe(true);
   });
 
   /**
-   * GIF would lose its animation and SVG would pull in a rasterizer for
-   * untrusted markup; both are served as the original instead.
+   * `image/tiff` and `image/avif` were in the first version of this set and
+   * are not uploadable, so they came back out (LAC-5705 F1).
    */
-  it("refuses gif, svg, video and anything unknown", () => {
-    expect(isResizableImageMime("image/gif")).toBe(false);
-    expect(isResizableImageMime("image/svg+xml")).toBe(false);
-    expect(isResizableImageMime("video/mp4")).toBe(false);
-    expect(isResizableImageMime("application/pdf")).toBe(false);
-    expect(isResizableImageMime(null)).toBe(false);
-    expect(isResizableImageMime(undefined)).toBe(false);
+  it("refuses types no upload path can produce", () => {
+    expect(isResizeCandidateMime("image/tiff")).toBe(false);
+    expect(isResizeCandidateMime("image/avif")).toBe(false);
+    expect(isResizeCandidateMime("image/gif")).toBe(false);
+    expect(isResizeCandidateMime("image/svg+xml")).toBe(false);
+    expect(isResizeCandidateMime("video/mp4")).toBe(false);
+    expect(isResizeCandidateMime("application/pdf")).toBe(false);
+    expect(isResizeCandidateMime(null)).toBe(false);
+    expect(isResizeCandidateMime(undefined)).toBe(false);
+  });
+});
+
+/**
+ * LAC-5705 F1. The first version of this module gated on `media.mimeType`,
+ * which is client-supplied on the presigned upload path and never verified
+ * against the object. sharp picks its decoder by sniffing bytes, so that
+ * allowlist restricted nothing: a label of `image/jpeg` on SVG, GIF or TIFF
+ * bytes decoded fine.
+ *
+ * These feed real bytes of each excluded container. A test written from MIME
+ * strings cannot catch this class of bug, which is why the one above is not
+ * enough on its own.
+ */
+describe("resizeMediaImage decodes on sniffed format, not the declared label", () => {
+  const svg = Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600">' +
+      '<rect width="800" height="600" fill="red"/></svg>'
+  );
+
+  const asArrayBuffer = (buf: Buffer): ArrayBuffer =>
+    buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+
+  it("refuses SVG bytes however they are labelled", async () => {
+    // Sanity: sharp really would have decoded this.
+    expect((await sharp(svg).metadata()).format).toBe("svg");
+
+    expect(await resizeMediaImage(asArrayBuffer(svg), { width: 640, quality: 75 })).toBeNull();
+  });
+
+  it("refuses GIF and TIFF bytes, which the MIME check used to let through", async () => {
+    for (const format of ["gif", "tiff"] as const) {
+      const buf = await sharp({
+        create: { width: 800, height: 600, channels: 3, background: "#777777" },
+      })
+        [format]()
+        .toBuffer();
+      expect((await sharp(buf).metadata()).format).toBe(format);
+
+      expect(await resizeMediaImage(asArrayBuffer(buf), { width: 640, quality: 75 })).toBeNull();
+    }
+  });
+
+  it("still resizes every container an upload can actually produce", async () => {
+    for (const format of ["jpeg", "png", "webp"] as const) {
+      const buf = await sharp({
+        create: { width: 1600, height: 1200, channels: 3, background: "#2244aa" },
+      })
+        [format]()
+        .toBuffer();
+
+      const resized = await resizeMediaImage(asArrayBuffer(buf), { width: 640, quality: 75 });
+      expect(resized, format).not.toBeNull();
+      expect((await sharp(resized?.body ?? Buffer.alloc(0)).metadata()).width).toBe(640);
+    }
+  });
+
+  /**
+   * LAC-5705 F2: `failOn: "none"` is gone, so truncated input errors out and
+   * the caller serves the original rather than a partial render.
+   */
+  it("refuses a truncated JPEG rather than returning a partial render", async () => {
+    const whole = await sharp({
+      create: { width: 1600, height: 1200, channels: 3, background: "#2244aa" },
+    })
+      .jpeg()
+      .toBuffer();
+    const truncated = whole.subarray(0, Math.floor(whole.byteLength / 2));
+
+    expect(
+      await resizeMediaImage(asArrayBuffer(truncated), { width: 640, quality: 75 })
+    ).toBeNull();
   });
 });
