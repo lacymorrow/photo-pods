@@ -336,3 +336,51 @@ describe("GET /api/pods/media/[mediaId] — in-route resize (LAC-5698)", () => {
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
   });
 });
+
+/**
+ * LAC-5705 F1 at the route. `media.mimeType` is client-supplied on the
+ * presigned upload path, so a declared `image/jpeg` gets past the candidate
+ * check. The byte sniff inside `resizeMediaImage` is what has to stop it, and
+ * the route then serves the stored original rather than a rasterized SVG.
+ */
+describe("GET /api/pods/media/[mediaId] — a lying mimeType cannot pick the decoder (LAC-5705)", () => {
+  const svg = Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600">' +
+      '<rect width="800" height="600" fill="red"/></svg>'
+  );
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.auth.mockResolvedValue({ user: { id: "u-1", role: "user" } });
+    mocks.canView.mockReturnValue(true);
+    mocks.loadStorageConfig.mockReturnValue(BLOB_CONFIG);
+    // The row claims JPEG; the object is SVG.
+    mocks.findFirstMedia.mockResolvedValue(readyMedia({ mimeType: "image/jpeg" }));
+    mocks.loadPolicyContext.mockResolvedValue({ pod: { id: "p-1", visibility: "private" } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(new Uint8Array(svg), {
+            status: 200,
+            headers: { "content-type": "image/jpeg" },
+          })
+      )
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("serves the stored original instead of rasterizing the SVG", async () => {
+    const res = (await call("?w=640")) as Response;
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/jpeg");
+    expect(res.headers.get("content-type")).not.toBe("image/webp");
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(new Uint8Array(svg));
+    // Still never sniffable into something executable.
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+});

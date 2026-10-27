@@ -5,7 +5,7 @@ import { parsePodMediaQuality, parsePodMediaWidth } from "@/lib/pods/media-url";
 import { auth } from "@/server/auth";
 import { db } from "@/server/db";
 import { podMedia } from "@/server/db/pods-schema";
-import { isResizableImageMime, resizeMediaImage } from "@/server/services/pod-media-resize";
+import { isResizeCandidateMime, resizeMediaImage } from "@/server/services/pod-media-resize";
 import * as policy from "@/server/services/pod-policy";
 import { loadStorageConfig, planMediaServe, presign } from "@/server/services/pod-storage";
 
@@ -93,8 +93,11 @@ export const GET = async (
   // Only non-public pods resize here. A public pod's src is its CDN URL, so
   // `next/image` already optimizes it the normal way; honouring `?w=` for one
   // would just donate unauthenticated CPU.
+  // `isResizeCandidateMime` is the cheap declared-type hint only; the real
+  // format gate is the byte sniff inside `resizeMediaImage`, which returns
+  // null and falls through to the original when the bytes are not decodable.
   const shouldResize =
-    width !== null && ctx.pod.visibility !== "public" && isResizableImageMime(media.mimeType);
+    width !== null && ctx.pod.visibility !== "public" && isResizeCandidateMime(media.mimeType);
 
   if (plan.kind === "redirect" && !shouldResize) {
     const res = NextResponse.redirect(plan.url, 302);
