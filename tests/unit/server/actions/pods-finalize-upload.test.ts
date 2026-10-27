@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(async () => ({ user: { id: "u-1", role: "user" } })),
   findFirst: vi.fn(),
+  findFirstPod: vi.fn(async () => ({ visibility: "private" })),
   updateCalls: [] as Array<{ values: Record<string, unknown> }>,
   dbUpdate: vi.fn(),
   loadStorageConfig: vi.fn(),
@@ -15,7 +16,10 @@ vi.mock("@/server/auth", () => ({ auth: mocks.auth }));
 
 vi.mock("@/server/db", () => ({
   db: {
-    query: { podMedia: { findFirst: mocks.findFirst } },
+    query: {
+      podMedia: { findFirst: mocks.findFirst },
+      pods: { findFirst: mocks.findFirstPod },
+    },
     update: mocks.dbUpdate,
   },
 }));
@@ -23,13 +27,19 @@ vi.mock("@/server/db", () => ({
 vi.mock("@/server/services/pod-policy", () => ({}));
 vi.mock("@/server/services/pod-reactions", () => ({}));
 
-vi.mock("@/server/services/pod-storage", () => ({
-  isStorageConfigured: vi.fn(() => true),
-  loadStorageConfig: mocks.loadStorageConfig,
-  buildStorageKey: vi.fn(),
-  presign: mocks.presign,
-  publicUrlForKey: vi.fn(() => null),
-}));
+// `applyMediaUrlPolicy` is kept real: finalizeUpload's return value runs
+// through it (LAC-5696), and a fake would assert nothing.
+vi.mock("@/server/services/pod-storage", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/server/services/pod-storage")>();
+  return {
+    ...actual,
+    isStorageConfigured: vi.fn(() => true),
+    loadStorageConfig: mocks.loadStorageConfig,
+    buildStorageKey: vi.fn(),
+    presign: mocks.presign,
+    publicUrlForKey: vi.fn(() => null),
+  };
+});
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
@@ -132,6 +142,8 @@ const okResponse = (bytes?: Uint8Array) =>
 describe("finalizeUpload — server-side EXIF enforcement (LAC-3169)", () => {
   beforeEach(() => {
     mocks.findFirst.mockReset();
+    mocks.findFirstPod.mockReset();
+    mocks.findFirstPod.mockResolvedValue({ visibility: "private" });
     mocks.updateCalls.length = 0;
     mocks.dbUpdate.mockReset();
     mocks.dbUpdate.mockImplementation(() => ({

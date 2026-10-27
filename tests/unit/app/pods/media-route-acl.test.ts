@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   findFirstMedia: vi.fn(),
   loadPolicyContext: vi.fn(),
   canView: vi.fn(() => true),
+  canModerate: vi.fn(() => false),
   loadStorageConfig: vi.fn(),
 }));
 
@@ -20,6 +21,7 @@ vi.mock("@/server/db", () => ({
 vi.mock("@/server/services/pod-policy", () => ({
   loadPolicyContext: mocks.loadPolicyContext,
   canView: mocks.canView,
+  canModerate: mocks.canModerate,
 }));
 
 // Keep the real `planMediaServe` — it is the policy under test — but control
@@ -41,12 +43,18 @@ const BLOB_CONFIG = {
   region: "auto",
 };
 
-const params = Promise.resolve({ mediaId: "m-1" });
+// A real UUID: the route validates the shape before it queries, because
+// `podMedia.id` is a Postgres `uuid` column (LAC-5696).
+const MEDIA_ID = "7b9d6f2a-5c31-4e18-9a04-2f6b8c1d3e55";
+const params = Promise.resolve({ mediaId: MEDIA_ID });
 // biome-ignore lint/suspicious/noExplicitAny: the route only reads `params`.
 const call = () => GET({} as any, { params });
+const callWith = (mediaId: string) =>
+  // biome-ignore lint/suspicious/noExplicitAny: the route only reads `params`.
+  GET({} as any, { params: Promise.resolve({ mediaId }) });
 
 const readyMedia = (over: Record<string, unknown> = {}) => ({
-  id: "m-1",
+  id: MEDIA_ID,
   podId: "p-1",
   status: "ready",
   storageKey: null,
@@ -61,6 +69,7 @@ describe("GET /api/pods/media/[mediaId] — pod ACL (LAC-3173)", () => {
     vi.clearAllMocks();
     mocks.auth.mockResolvedValue({ user: { id: "u-1", role: "user" } });
     mocks.canView.mockReturnValue(true);
+    mocks.canModerate.mockReturnValue(false);
     mocks.loadStorageConfig.mockReturnValue(BLOB_CONFIG);
     mocks.findFirstMedia.mockResolvedValue(readyMedia());
     mocks.loadPolicyContext.mockResolvedValue({ pod: { id: "p-1", visibility: "private" } });
@@ -172,5 +181,159 @@ describe("GET /api/pods/media/[mediaId] — pod ACL (LAC-3173)", () => {
     const res = (await call()) as Response;
 
     expect(res.headers.get("content-type")).toBe("image/webp");
+  });
+});
+
+/**
+ * LAC-5696: `podMedia.id` is a Postgres `uuid`, so `eq(podMedia.id, mediaId)`
+ * on a non-UUID segment raised `invalid input syntax for type uuid` and the
+ * route answered 500 with an empty body. PR #50 put every non-public pod's
+ * image traffic through this handler, which moved malformed ids onto a hot
+ * path. Observed against the deployment before the fix:
+ *
+ *   GET /api/pods/media/not-a-uuid -> 500 (empty body)
+ *   GET /api/pods/media/abc        -> 500
+ *
+ * The shape check has to sit in front of the query rather than in a catch
+ * around it: a catch would answer 404 for a database outage too, and hide it.
+ */
+describe("GET /api/pods/media/[mediaId] — malformed media id (LAC-5696)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.auth.mockResolvedValue({ user: { id: "u-1", role: "user" } });
+    mocks.canView.mockReturnValue(true);
+    mocks.canModerate.mockReturnValue(false);
+    mocks.loadStorageConfig.mockReturnValue(BLOB_CONFIG);
+    mocks.findFirstMedia.mockResolvedValue(readyMedia());
+    mocks.loadPolicyContext.mockResolvedValue({ pod: { id: "p-1", visibility: "private" } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(PHOTO_BYTES, { status: 200 }))
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  for (const bad of [
+    "not-a-uuid",
+    "abc",
+    "' OR 1=1--",
+    "7b9d6f2a5c314e189a042f6b8c1d3e55", // right digits, no hyphens
+    "7b9d6f2a-5c31-4e18-9a04-2f6b8c1d3e5", // one digit short
+    "7b9d6f2a-5c31-4e18-9a04-2f6b8c1d3e5g", // non-hex digit
+    "{7b9d6f2a-5c31-4e18-9a04-2f6b8c1d3e55}",
+  ]) {
+    it(`answers 404 for ${JSON.stringify(bad)} and never reaches the database`, async () => {
+      const res = (await callWith(bad)) as { body: unknown; init: { status: number } };
+
+      expect(res.init.status).toBe(404);
+      expect(res.body).toEqual({ error: "not_found" });
+      expect(mocks.findFirstMedia).not.toHaveBeenCalled();
+    });
+  }
+
+  it("accepts an uppercase UUID, which Postgres would have matched anyway", async () => {
+    const res = (await callWith(MEDIA_ID.toUpperCase())) as Response;
+
+    expect(mocks.findFirstMedia).toHaveBeenCalled();
+    expect(res.status).toBe(200);
+  });
+
+  it("still answers 404 for a well-formed id with no row", async () => {
+    mocks.findFirstMedia.mockResolvedValue(undefined);
+
+    const res = (await call()) as { body: unknown; init: { status: number } };
+
+    expect(res.init.status).toBe(404);
+    expect(res.body).toEqual({ error: "not_found" });
+  });
+
+  it("lets a genuine database failure surface instead of flattening it to 404", async () => {
+    // The regression this guards: "just wrap the lookup in try/catch" turns an
+    // outage into a quiet not-found. The route must still throw, so Next
+    // answers 5xx and the error reaches the logs.
+    mocks.findFirstMedia.mockRejectedValue(new Error("connection terminated unexpectedly"));
+
+    await expect(call()).rejects.toThrow(/connection terminated/);
+  });
+});
+
+/**
+ * LAC-5696: the admin moderation queue used to hand reviewers the permanent
+ * public storage URL. It now hands them this route, so the route has to serve
+ * them — and the media they are reviewing is the hardest case it has.
+ *
+ * `canView` is not enough. For a private pod it returns true only for the
+ * owner, admin or not, and reports are raised against pods the reviewer was
+ * never a member of. Auto-hidden media is refused outright before policy runs,
+ * and auto-hidden is exactly what lands in the queue.
+ */
+describe("GET /api/pods/media/[mediaId] — moderator reads (LAC-5696)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.auth.mockResolvedValue({ user: { id: "admin-1", role: "admin" } });
+    // A private pod the admin does not own: the real `canView` says no here.
+    mocks.canView.mockReturnValue(false);
+    mocks.canModerate.mockReturnValue(true);
+    mocks.loadStorageConfig.mockReturnValue(BLOB_CONFIG);
+    mocks.findFirstMedia.mockResolvedValue(readyMedia());
+    mocks.loadPolicyContext.mockResolvedValue({ pod: { id: "p-1", visibility: "private" } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(PHOTO_BYTES, {
+            status: 200,
+            headers: { "content-type": "image/jpeg" },
+          })
+      )
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("serves a private pod's media to a moderator who is not a member", async () => {
+    const res = (await call()) as Response;
+
+    expect(res.status).toBe(200);
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(PHOTO_BYTES);
+    // Proxied, not redirected: a moderator gets no reusable storage URL either.
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("serves auto-hidden media to a moderator — that is what the queue is for", async () => {
+    mocks.findFirstMedia.mockResolvedValue(readyMedia({ hiddenAt: new Date() }));
+
+    const res = (await call()) as Response;
+
+    expect(res.status).toBe(200);
+  });
+
+  it("keeps hidden media hidden from an ordinary member", async () => {
+    mocks.auth.mockResolvedValue({ user: { id: "u-1", role: "user" } });
+    mocks.canView.mockReturnValue(true);
+    mocks.canModerate.mockReturnValue(false);
+    mocks.findFirstMedia.mockResolvedValue(readyMedia({ hiddenAt: new Date() }));
+
+    const res = (await call()) as { body: unknown; init: { status: number } };
+
+    expect(res.init.status).toBe(404);
+    expect(res.body).toEqual({ error: "not_available" });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not let a non-admin who fails canView through the moderator branch", async () => {
+    mocks.auth.mockResolvedValue({ user: { id: "u-2", role: "user" } });
+    mocks.canView.mockReturnValue(false);
+    mocks.canModerate.mockReturnValue(false);
+
+    const res = (await call()) as { body: unknown; init: { status: number } };
+
+    expect(res.init.status).toBe(403);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });

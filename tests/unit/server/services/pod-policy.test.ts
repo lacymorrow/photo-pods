@@ -202,6 +202,22 @@ describe("pod-policy: canInvite / canModerate / canFollow", () => {
     expect(canModerate(ctx({ visibility: "group", role: null, isAdmin: true }))).toBe(true);
   });
 
+  // The reason the media route consults `canModerate` as well as `canView`
+  // (LAC-5696). It would be easy to assume an admin already passes `canView`
+  // — they do on a hidden *pod*, which is the only place `isAdmin` appears in
+  // that predicate. On a private pod they do not, and private pods are where
+  // the moderation queue's URLs leaked.
+  it("an admin cannot view a private pod they do not own, but can moderate it", () => {
+    const adminOnSomeoneElsesPrivatePod = ctx({
+      visibility: "private",
+      role: null,
+      isAdmin: true,
+    });
+
+    expect(canView(adminOnSomeoneElsesPrivatePod)).toBe(false);
+    expect(canModerate(adminOnSomeoneElsesPrivatePod)).toBe(true);
+  });
+
   it("only authenticated users can follow, and only public pods", () => {
     expect(canFollow(ctx({ visibility: "public", role: null }))).toBe(true);
     expect(canFollow(ctx({ visibility: "public", role: null, viewerId: null }))).toBe(false);

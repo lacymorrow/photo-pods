@@ -764,6 +764,14 @@ export const finalizeUpload = async (input: {
   if (!media) throw new Error("Media not found");
   if (media.uploadedById !== viewer.userId) throw new Error("Not your upload");
 
+  const pod = await database.query.pods.findFirst({
+    where: eq(pods.id, media.podId),
+    columns: { visibility: true },
+  });
+  // Fail closed: an unresolvable pod is treated as non-public so the
+  // response below cannot carry a long-lived storage URL.
+  const visibility = pod?.visibility ?? "private";
+
   const config = loadStorageConfig();
 
   let exifStrippedAt: Date | undefined;
@@ -849,6 +857,7 @@ export const finalizeUpload = async (input: {
     })
     .where(eq(podMedia.id, input.mediaId))
     .returning();
+  if (!updated) throw new Error("Upload could not be finalized");
 
   await database
     .update(pods)
@@ -859,7 +868,10 @@ export const finalizeUpload = async (input: {
     .where(eq(pods.id, media.podId));
 
   revalidatePath(`/pods/${media.podId}`);
-  return updated;
+  // The uploader's own browser gets the same treatment every other read path
+  // gets. Nothing renders this return value today, which is exactly why it
+  // is worth closing now rather than when something does (LAC-5696).
+  return applyMediaUrlPolicy(updated, visibility);
 };
 
 // --- Media: legacy formData upload (Vercel Blob fallback) ---
@@ -972,9 +984,12 @@ export const uploadPhoto = async (podId: string, formData: FormData) => {
       .where(eq(pods.id, podId));
     return inserted;
   });
+  if (!row) throw new Error("Upload failed");
 
   revalidatePath(`/pods/${podId}`);
-  return row;
+  // Same rule as every other read path: a non-public pod never receives the
+  // permanent blob URL this action just wrote (LAC-5696).
+  return applyMediaUrlPolicy(row, ctx.pod.visibility);
 };
 
 export const deletePhoto = async (photoId: string) => {
