@@ -10,9 +10,9 @@
  * @module lib/pods/upload-media-client
  */
 
-import { finalizeUpload, requestPresignedUpload, uploadPhoto } from "@/server/actions/pods";
 import { isHeicFile } from "@/lib/pods/heic";
 import { stripExifClientSide } from "@/lib/pods/strip-exif-client";
+import { finalizeUpload, requestPresignedUpload, uploadPhoto } from "@/server/actions/pods";
 
 /**
  * Best-effort dimension probe so `finalizeUpload` can persist width/height —
@@ -43,6 +43,15 @@ export const uploadPodPhoto = async (podId: string, file: File): Promise<void> =
   // the one the HEIC transcode has to reach (LAC-5712).
   const isImage = file.type.startsWith("image/") || isHeicFile(file);
   const uploadFile = isImage ? await stripExifClientSide(file) : file;
+
+  // Still HEIC here means the browser transcode (LAC-5712) failed. The server
+  // no longer accepts HEIC, so this would fail at `requestPresignedUpload`
+  // anyway with "Unsupported content type: image/heic". Throwing here instead
+  // says something the uploader can act on, and keeps the fallback path from
+  // quietly storing bytes nothing in the app can render (LAC-5717).
+  if (isHeicFile(uploadFile)) {
+    throw new Error("This HEIC photo wouldn't convert. Upload a JPEG copy instead.");
+  }
 
   const presigned = await requestPresignedUpload({
     podId,

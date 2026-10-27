@@ -82,3 +82,62 @@ describe("requestPresignedUpload — storage-not-configured fallback (LAC-2912)"
     expect(mocks.dbInsert).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * The photo mime gate (LAC-5717).
+ *
+ * HEIC left `PHOTO_MIMES` once the browser started transcoding it to JPEG
+ * (LAC-5712). The gate is the only thing standing between a failed transcode
+ * and a stored tile that nothing in this app can render — not a Chromium
+ * `<img>`, not this build's sharp — so it is worth pinning directly rather
+ * than inferring from the client wiring.
+ */
+describe("requestPresignedUpload — photo mime gate (LAC-5717)", () => {
+  beforeEach(() => {
+    mocks.dbInsert.mockReset();
+    mocks.dbInsert.mockReturnValue({ values: vi.fn(async () => undefined) });
+    mocks.isStorageConfigured.mockReset();
+    mocks.isStorageConfigured.mockReturnValue(true);
+    mocks.guardUpload.mockReset();
+    mocks.guardUpload.mockImplementation(async (_podId: string, viewer: any) => ({
+      pod: { id: "p-1", retainLocationExif: false },
+      viewer: { ...viewer, userId: "u-1" },
+      membership: { role: "owner" },
+    }));
+  });
+
+  const request = (contentType: string, filename = "a.bin", size = 1024) =>
+    requestPresignedUpload({ podId: "p-1", filename, contentType, size });
+
+  it.each(["image/jpeg", "image/png", "image/webp"])("accepts %s", async (mime) => {
+    await expect(request(mime)).resolves.toMatchObject({ uploadUrl: "https://r2.example/signed" });
+  });
+
+  it.each(["image/heic", "image/heif", "image/HEIC"])(
+    "rejects %s, because a HEIC reaching the server means the transcode failed",
+    async (mime) => {
+      await expect(request(mime, "IMG_0001.heic")).rejects.toThrow(/Unsupported content type/);
+      expect(mocks.dbInsert).not.toHaveBeenCalled();
+    }
+  );
+
+  /**
+   * This is the property the widened `isHeicFile` gate rests on. A .heic can
+   * arrive from Windows with an empty `type`, so the client stages and
+   * transcodes it on the filename alone. Nothing stops a caller naming an
+   * arbitrary non-image `.heic`, and the only thing that rejects it is this
+   * gate refusing the empty content type it arrives with.
+   */
+  it("rejects an empty content type, whatever the file is named", async () => {
+    await expect(request("", "totally-not-an-image.heic")).rejects.toThrow(
+      /Unsupported content type/
+    );
+    expect(mocks.dbInsert).not.toHaveBeenCalled();
+  });
+
+  it("still accepts the video mimes, which this change does not touch", async () => {
+    await expect(request("video/mp4", "clip.mp4")).resolves.toMatchObject({
+      uploadUrl: "https://r2.example/signed",
+    });
+  });
+});

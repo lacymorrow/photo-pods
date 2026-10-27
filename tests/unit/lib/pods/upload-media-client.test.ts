@@ -21,7 +21,10 @@ vi.mock("@/lib/pods/strip-exif-client", () => ({
   stripExifClientSide: vi.fn(async (file: File) => file),
 }));
 
+import { stripExifClientSide } from "@/lib/pods/strip-exif-client";
 import { uploadPodPhoto } from "@/lib/pods/upload-media-client";
+
+const stripMock = vi.mocked(stripExifClientSide);
 
 const makeFile = (name: string, type: string, bytes = 16) =>
   new File([new Uint8Array(bytes)], name, { type });
@@ -141,5 +144,60 @@ describe("uploadPodPhoto (LAC-2912)", () => {
 
     await expect(uploadPodPhoto("p-1", file)).rejects.toThrow(/403/);
     expect(mocks.finalizeUpload).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A HEIC that survives the strip step means the browser transcode (LAC-5712)
+ * failed. Before LAC-5717 the raw HEIC went to storage, `PHOTO_MIMES` still
+ * took it, and the user saw a successful upload with a permanently broken
+ * tile — the exact bug the transcode exists to fix, now with no error
+ * anywhere. The strip is identity-mocked in this file, so any HEIC handed to
+ * `uploadPodPhoto` here arrives at that check still HEIC.
+ */
+describe("uploadPodPhoto — failed HEIC transcode (LAC-5717)", () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    mocks.requestPresignedUpload.mockReset();
+    mocks.finalizeUpload.mockReset();
+    mocks.uploadPhoto.mockReset();
+    fetchMock.mockReset();
+    stripMock.mockReset();
+    stripMock.mockImplementation(async (file: File) => file);
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("createImageBitmap", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    ["a declared HEIC", "IMG_0001.heic", "image/heic"],
+    ["a declared HEIF", "IMG_0002.heif", "image/heif"],
+    ["a .heic the browser gave no mime type", "IMG_0003.heic", ""],
+  ])("throws for %s instead of uploading undisplayable bytes", async (_label, name, type) => {
+    await expect(uploadPodPhoto("p-1", makeFile(name, type))).rejects.toThrow(/HEIC/);
+
+    // Nothing reached the server on either path, so no row and no bytes.
+    expect(mocks.requestPresignedUpload).not.toHaveBeenCalled();
+    expect(mocks.uploadPhoto).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.finalizeUpload).not.toHaveBeenCalled();
+  });
+
+  it("uploads normally when the transcode did produce a JPEG", async () => {
+    stripMock.mockResolvedValue(makeFile("IMG_0001.jpg", "image/jpeg"));
+    mocks.requestPresignedUpload.mockResolvedValue(presignedResponse());
+    fetchMock.mockResolvedValue(new Response(null, { status: 200 }));
+    mocks.finalizeUpload.mockResolvedValue({});
+
+    await uploadPodPhoto("p-1", makeFile("IMG_0001.heic", "image/heic"));
+
+    expect(mocks.requestPresignedUpload).toHaveBeenCalledWith(
+      expect.objectContaining({ contentType: "image/jpeg", filename: "IMG_0001.jpg" })
+    );
+    expect(mocks.finalizeUpload).toHaveBeenCalledOnce();
   });
 });

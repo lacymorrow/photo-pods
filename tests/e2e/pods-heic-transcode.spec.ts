@@ -33,6 +33,11 @@ import { expect, test } from "@playwright/test";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(__dirname, "fixtures/iphone-hevc-480x360.heic");
+/**
+ * A 64x64 HEVC HEIC. It decodes fine on its own; what it does is corrupt
+ * libheif's asm.js heap so a *later* decode fails (LAC-5717).
+ */
+const TINY_FIXTURE = path.join(__dirname, "fixtures/tiny-64x64.heic");
 const HEIC2ANY = path.join(__dirname, "../../node_modules/heic2any/dist/heic2any.min.js");
 
 /** Keep these in step with `decode-heic-client.ts`. */
@@ -42,15 +47,33 @@ test.describe("HEVC HEIC transcode (LAC-5712)", () => {
   test.beforeEach(async ({ page }) => {
     // Any same-origin document will do; the test never touches app routes.
     await page.goto("/");
-    await page.addScriptTag({ path: HEIC2ANY });
-    await page.evaluate((b64) => {
-      const bin = atob(b64);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      (window as unknown as { __heic: Blob }).__heic = new Blob([bytes], {
-        type: "image/heic",
+    // Record the URL heic2any builds its one worker from, exactly as
+    // `decode-heic-client.ts` does, so the recovery test can rebuild it.
+    await page.evaluate(() => {
+      const scope = window as unknown as { __workerUrls: string[]; Worker: typeof Worker };
+      scope.__workerUrls = [];
+      scope.Worker = new Proxy(scope.Worker, {
+        construct(target, args: [string | URL, WorkerOptions?]) {
+          scope.__workerUrls.push(String(args[0]));
+          return Reflect.construct(target, args);
+        },
       });
-    }, readFileSync(FIXTURE).toString("base64"));
+    });
+    await page.addScriptTag({ path: HEIC2ANY });
+    await page.evaluate(
+      ([main, tiny]) => {
+        const decode = (b64: string) => {
+          const bin = atob(b64);
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          return new Blob([bytes], { type: "image/heic" });
+        };
+        const scope = window as unknown as { __heic: Blob; __heicTiny: Blob };
+        scope.__heic = decode(main);
+        scope.__heicTiny = decode(tiny);
+      },
+      [readFileSync(FIXTURE).toString("base64"), readFileSync(TINY_FIXTURE).toString("base64")]
+    );
   });
 
   test("the browser cannot display the fixture on its own", async ({ page }) => {
@@ -119,5 +142,69 @@ test.describe("HEVC HEIC transcode (LAC-5712)", () => {
     expect(result.hasExif).toBe(false);
     expect(result.hasXmp).toBe(false);
     expect(result.hasIptc).toBe(false);
+  });
+
+  /**
+   * LAC-5717 finding 1. One decode can corrupt libheif's asm.js heap and
+   * break *later* ones, and heic2any keeps a single module-global worker that
+   * it creates at import and never re-creates. Before the fix the failure was
+   * silent: the transcode returned null, the raw HEIC went to storage, and
+   * the user got a successful upload with a tile that could never render.
+   *
+   * This is also the guard on the two heic2any internals the recovery code
+   * reaches into. If an upgrade renames `window.__heic2any__worker` or stops
+   * building the worker from a Blob URL, this test says so.
+   */
+  test("a corrupted decoder is rebuilt rather than left broken for the page", async ({ page }) => {
+    const decode = (which: "__heic" | "__heicTiny") =>
+      page.evaluate(async (key) => {
+        try {
+          const blob = (window as unknown as Record<string, Blob>)[key];
+          const out = (await (
+            window as unknown as { heic2any: (o: unknown) => Promise<Blob> }
+          ).heic2any({ blob, toType: "image/jpeg", quality: 0.92 })) as Blob;
+          const bitmap = await createImageBitmap(out);
+          const dims = `${bitmap.width}x${bitmap.height}`;
+          bitmap.close();
+          return { ok: true, dims };
+        } catch (e) {
+          // heic2any rejects with a plain `{ code, message }`, not an Error.
+          const message = (e as { message?: string })?.message;
+          return { ok: false, err: typeof message === "string" ? message : String(e) };
+        }
+      }, which);
+
+    const hasWorkerGlobal = await page.evaluate(
+      () => !!(window as unknown as { __heic2any__worker?: Worker }).__heic2any__worker
+    );
+    expect(hasWorkerGlobal).toBe(true);
+
+    expect(await decode("__heic")).toEqual({ ok: true, dims: "480x360" });
+    // Succeeds on its own. The damage shows up on the next decode.
+    expect(await decode("__heicTiny")).toEqual({ ok: true, dims: "64x64" });
+
+    const poisoned = await decode("__heic");
+    expect(poisoned.ok).toBe(false);
+    expect(poisoned.err).toContain("ERR_LIBHEIF");
+
+    // What `decode-heic-client.ts` does on a failed decode. Terminating
+    // without rebuilding would be worse than nothing: heic2any dereferences
+    // the global unguarded, so the next call would die on `postMessage` and
+    // HEIC would stay broken for the life of the page.
+    const rebuilt = await page.evaluate(() => {
+      const scope = window as unknown as {
+        __heic2any__worker?: Worker;
+        __workerUrls: string[];
+      };
+      const url = scope.__workerUrls[0];
+      if (!url?.startsWith("blob:")) return false;
+      scope.__heic2any__worker?.terminate();
+      scope.__heic2any__worker = new Worker(url);
+      return true;
+    });
+    expect(rebuilt).toBe(true);
+
+    expect(await decode("__heic")).toEqual({ ok: true, dims: "480x360" });
+    expect(await decode("__heic")).toEqual({ ok: true, dims: "480x360" });
   });
 });
