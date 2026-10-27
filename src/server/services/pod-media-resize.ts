@@ -25,6 +25,13 @@ import sharp from "sharp";
  * `heif`, which is why one rung covers all three. GIF stays out because a
  * resize would flatten its animation, SVG because rasterizing untrusted markup
  * buys no payload win, and the rest because nothing can put them here.
+ *
+ * Note `heif` being allowed is not the same as HEIC working. This build's
+ * libheif carries AV1 only (`sharp.format.heif.input.fileSuffix` is
+ * `['.avif']`, and an `hevc` encode fails with "heifsave: Unsupported
+ * compression"), so an HEVC-coded iPhone .heic does not decode and falls
+ * through to the original. Pre-existing and tracked separately; the rung is
+ * kept because AVIF-coded input does decode.
  */
 const DECODABLE_FORMATS = new Set(["jpeg", "png", "webp", "heif"]);
 
