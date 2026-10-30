@@ -28,13 +28,19 @@ vi.mock("@/server/services/pod-reactions", () => ({}));
 
 // isStorageConfigured() must be false or uploadPhoto refuses outright — this is
 // the prod configuration today (no R2), which is why this path is the live one.
-vi.mock("@/server/services/pod-storage", () => ({
-  isStorageConfigured: mocks.isStorageConfigured,
-  loadStorageConfig: vi.fn(() => ({})),
-  buildStorageKey: vi.fn(),
-  presign: vi.fn(),
-  publicUrlForKey: vi.fn(),
-}));
+// `applyMediaUrlPolicy` is kept real: uploadPhoto's return value runs through
+// it (LAC-5696), and a fake would assert nothing.
+vi.mock("@/server/services/pod-storage", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/server/services/pod-storage")>();
+  return {
+    ...actual,
+    isStorageConfigured: mocks.isStorageConfigured,
+    loadStorageConfig: vi.fn(() => ({})),
+    buildStorageKey: vi.fn(),
+    presign: vi.fn(),
+    publicUrlForKey: vi.fn(),
+  };
+});
 
 vi.mock("@/server/services/pod-storage-cleanup", () => ({
   collectMediaKeys: vi.fn(() => []),
@@ -98,7 +104,7 @@ const formDataWith = (bytes: Uint8Array, type = "image/jpeg", name = "gps-tagged
 // every test uploads as its own user id to get a fresh window.
 const uploadAs = (userId: string, fd: FormData) => {
   mocks.guardUpload.mockImplementation(async (_podId: string, viewer: Record<string, unknown>) => ({
-    pod: { id: "p-1", retainLocationExif: null },
+    pod: { id: "p-1", visibility: "private", retainLocationExif: null },
     viewer: { ...viewer, userId },
     membership: { role: "owner" },
   }));

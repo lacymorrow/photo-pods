@@ -9,6 +9,7 @@ import { asc, eq } from "drizzle-orm";
 import { db } from "@/server/db";
 import { mediaReports, podMedia, podReports, pods } from "@/server/db/pods-schema";
 import { users } from "@/server/db/schema";
+import { applyMediaUrlPolicy } from "@/server/services/pod-storage";
 
 // Oldest-first so the queue surfaces the reports closest to breaching the
 // <4h review SLA (LAC-2854 §Quality Gates). Capped defensively; a queue this
@@ -18,9 +19,18 @@ const QUEUE_LIMIT = 200;
 export type PendingMediaReport = Awaited<ReturnType<typeof getPendingMediaReports>>[number];
 export type PendingPodReport = Awaited<ReturnType<typeof getPendingPodReports>>[number];
 
+/**
+ * Pending media reports, oldest first.
+ *
+ * The queue hands the reviewer a URL for the reported image, and for a
+ * private or group pod `podMedia.url` is a permanent public storage URL —
+ * one that keeps working for anyone it is forwarded to, with no pod ACL in
+ * front of it. Reviewers get the membership-checked media route instead; the
+ * route lets them through on `canModerate` (LAC-5696).
+ */
 export const getPendingMediaReports = async () => {
   if (!db) return [];
-  return db
+  const rows = await db
     .select({
       id: mediaReports.id,
       reason: mediaReports.reason,
@@ -49,6 +59,11 @@ export const getPendingMediaReports = async () => {
     .where(eq(mediaReports.status, "pending"))
     .orderBy(asc(mediaReports.createdAt))
     .limit(QUEUE_LIMIT);
+
+  return rows.map((row) => ({
+    ...row,
+    media: applyMediaUrlPolicy(row.media, row.pod.visibility),
+  }));
 };
 
 export const getPendingPodReports = async () => {

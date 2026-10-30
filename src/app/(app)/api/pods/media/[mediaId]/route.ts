@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { isPodMediaId } from "@/lib/pods/media-url";
 import { auth } from "@/server/auth";
 import { db } from "@/server/db";
 import { podMedia } from "@/server/db/pods-schema";
@@ -18,6 +19,10 @@ import { loadStorageConfig, planMediaServe, presign } from "@/server/services/po
  * this route (Vercel Blob fallback and legacy rows) — see `planMediaServe`
  * and LAC-3173 for why the old redirect-to-`media.url` behaviour made the
  * membership check below decorative.
+ *
+ * Admins reviewing the moderation queue are let past both the hidden-media
+ * gate and `canView`, because the media they have been asked to review is
+ * routinely hidden and sits in pods they are not members of (LAC-5696).
  */
 export const GET = async (
   _req: NextRequest,
@@ -25,6 +30,14 @@ export const GET = async (
 ) => {
   if (!db) return NextResponse.json({ error: "db_unavailable" }, { status: 503 });
   const { mediaId } = await params;
+  // `podMedia.id` is a Postgres `uuid`, so anything else makes the lookup
+  // below raise `invalid input syntax for type uuid` and the route answers
+  // 500 with an empty body. Answer the way a miss answers instead. The check
+  // sits here rather than in a try/catch so a real database failure still
+  // surfaces as a 5xx (LAC-5696).
+  if (!isPodMediaId(mediaId)) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
 
   const session = await auth();
   const viewer: policy.Viewer = {
@@ -45,12 +58,15 @@ export const GET = async (
     },
   });
   if (!media) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  if (media.status !== "ready" || media.hiddenAt) {
+  // Hidden or still-processing media is invisible to viewers. Moderators are
+  // the exception: an auto-hidden photo is the one they were called in to
+  // look at (LAC-5696).
+  if ((media.status !== "ready" || media.hiddenAt) && !viewer.isAdmin) {
     return NextResponse.json({ error: "not_available" }, { status: 404 });
   }
 
   const ctx = await policy.loadPolicyContext(media.podId, viewer);
-  if (!ctx || !policy.canView(ctx)) {
+  if (!ctx || (!policy.canView(ctx) && !policy.canModerate(ctx))) {
     return NextResponse.json(
       { error: viewer.userId ? "forbidden" : "unauthorized" },
       { status: viewer.userId ? 403 : 401 }
