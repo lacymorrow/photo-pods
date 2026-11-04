@@ -46,5 +46,5 @@ Thanks for the contribution! A few things that make review faster:
 
 **This project is parked and nothing deploys.** `scripts/vercel-ignore-step.sh` skips every Vercel
 build, production included (LAC-5545, CEO ruling LAC-6903 decision 1a). Merging to `main` will not
-update any deployment. Reviving photo-pods? Removing that skip is step 1 — see the header of that
+update any deployment. Reviving photo-pods? Removing that skip is step 1: see the header of that
 file. A redeploy from the Vercel dashboard still works for a one-off.
