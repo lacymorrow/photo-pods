@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Hoisted mock refs so vi.mock() factories can share them with test bodies.
 const mocks = vi.hoisted(() => ({
+  blobDel: vi.fn(async (_urls: string[]) => undefined),
   loadStorageConfig: vi.fn(),
   deleteObject: vi.fn(),
   publicUrlForKey: vi.fn(() => null as string | null),
@@ -13,6 +14,8 @@ vi.mock("@/server/services/pod-storage", () => ({
   deleteObject: mocks.deleteObject,
   publicUrlForKey: mocks.publicUrlForKey,
 }));
+
+vi.mock("@vercel/blob", () => ({ del: mocks.blobDel }));
 
 vi.mock("@/server/db", () => ({
   db: {
@@ -50,6 +53,85 @@ describe("collectMediaKeys (LAC-2917 H2)", () => {
 
   it("returns empty for a legacy row with no storage key or variants", () => {
     expect(collectMediaKeys({ storageKey: null, variants: null } as any)).toEqual([]);
+  });
+});
+
+const BLOB = "https://abc123.public.blob.vercel-storage.com/pods/p-1/1-a.jpg";
+const BLOB_THUMB = "https://abc123.public.blob.vercel-storage.com/pods/p-1/1-a-thumb.jpg";
+
+describe("collectMediaKeys — legacy direct URL (LAC-6923)", () => {
+  it("includes the Vercel Blob url of a pre-R2 row that has no storage key", () => {
+    expect(collectMediaKeys({ storageKey: null, variants: null, url: BLOB } as any)).toEqual([
+      BLOB,
+    ]);
+  });
+
+  it("includes thumbnailUrl too, once when it equals url", () => {
+    expect(
+      collectMediaKeys({
+        storageKey: null,
+        variants: null,
+        url: BLOB,
+        thumbnailUrl: BLOB_THUMB,
+      } as any)
+    ).toEqual([BLOB, BLOB_THUMB]);
+    expect(
+      collectMediaKeys({ storageKey: null, variants: null, url: BLOB, thumbnailUrl: BLOB } as any)
+    ).toEqual([BLOB]);
+  });
+
+  it("ignores a url on a host @vercel/blob cannot delete, and malformed values", () => {
+    for (const url of [
+      "https://evil.example.com/a.jpg",
+      "http://x.blob.vercel-storage.com/a",
+      "not a url",
+      "/api/pods/media/1",
+    ]) {
+      expect(collectMediaKeys({ storageKey: null, variants: null, url } as any)).toEqual([]);
+    }
+  });
+});
+
+describe("deleteObjectsWithRetry — legacy blob urls (LAC-6923)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.publicUrlForKey.mockReturnValue(null);
+    mocks.blobDel.mockResolvedValue(undefined);
+  });
+
+  it("deletes a blob url through @vercel/blob, not the R2 deleter", async () => {
+    mocks.loadStorageConfig.mockReturnValue(R2_CONFIG);
+    mocks.deleteObject.mockResolvedValue({ ok: true, status: 204 });
+
+    const result = await deleteObjectsWithRetry([BLOB, "pods/p-1/m.jpg"]);
+
+    expect(mocks.blobDel).toHaveBeenCalledWith([BLOB]);
+    expect(mocks.deleteObject).toHaveBeenCalledTimes(1);
+    expect(mocks.deleteObject).toHaveBeenCalledWith(R2_CONFIG, "pods/p-1/m.jpg");
+    expect(result.deleted.sort()).toEqual([BLOB, "pods/p-1/m.jpg"].sort());
+  });
+
+  it("deletes blob urls even when R2 is not configured", async () => {
+    mocks.loadStorageConfig.mockReturnValue({ provider: "vercel-blob" });
+    mocks.dbInsert.mockReturnValue({ values: vi.fn(async () => undefined) });
+
+    const result = await deleteObjectsWithRetry([BLOB]);
+
+    expect(mocks.blobDel).toHaveBeenCalledWith([BLOB]);
+    expect(result).toEqual({ deleted: [BLOB], queued: [] });
+    expect(mocks.dbInsert).not.toHaveBeenCalled();
+  });
+
+  it("queues blob urls with reason blob-url when del throws, and never throws", async () => {
+    mocks.loadStorageConfig.mockReturnValue(R2_CONFIG);
+    mocks.blobDel.mockRejectedValue(new Error("No token found"));
+    const values = vi.fn(async () => undefined);
+    mocks.dbInsert.mockReturnValue({ values });
+
+    const result = await deleteObjectsWithRetry([BLOB]);
+
+    expect(result).toEqual({ deleted: [], queued: [BLOB] });
+    expect(values).toHaveBeenCalledWith([{ storageKey: BLOB, reason: "blob-url" }]);
   });
 });
 
