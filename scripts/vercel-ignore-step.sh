@@ -1,31 +1,29 @@
 #!/usr/bin/env bash
 # Vercel "Ignored Build Step". Exit 0 = skip the build, exit 1 = build.
 #
-# Production always builds: a skipped production build would leave the live
-# site on an older deployment after a merge.
+# THIS PROJECT IS PARKED. EVERY BUILD IS SKIPPED, PRODUCTION INCLUDED.
 #
-# Preview builds are skipped when the commit says [skip ci] or [skip vercel].
-# Those commits come from automated upstream syncs and agent PRs that already
-# ran `verify` locally (typecheck, lint, tests, production build, route smoke).
-# Preview builds on this project are cold (VERCEL_FORCE_NO_BUILD_CACHE) and
-# take 11 to 14 minutes each, so skipping them is real quota saved.
+# photo-pods was parked 2026-10-26 (LAC-5545): the production Supabase was let
+# go, and knowledge/properties.md already records photo-pods.vercel.app
+# erroring as an accepted outcome rather than an incident. Freezing a
+# production build that is already accepted-broken costs nothing, and this
+# project was the largest single consumer of Vercel build minutes among the
+# projects carrying this override, at 72 min/wk across all targets.
 #
-# To force a preview build on such a PR, redeploy it from the Vercel dashboard
-# or push a commit without the marker.
+# CEO ruling, LAC-6903 decision 1(a), 2026-11-04. This is a deliberate, scoped
+# exception to the fleet rule that production must keep building. It applies to
+# photo-pods ONLY and must not be copied to any other project.
+#
+# ---------------------------------------------------------------------------
+# REVIVING THIS PROJECT? Removing this skip is STEP 1 of revival.
+# Delete "ignoreCommand" from vercel.json, or restore the opt-in preview policy
+# that the other projects use (see any sibling repo's copy of this file).
+# Until you do, nothing you merge to main will ever deploy.
+# ---------------------------------------------------------------------------
+#
+# A redeploy from the Vercel dashboard bypasses this step entirely, so a
+# one-off build is still available without touching this file.
 set -eu
 
-if [ "${VERCEL_ENV:-}" = "production" ]; then
-  echo "production: building"
-  exit 1
-fi
-
-MSG=$(git log -1 --pretty=%B 2>/dev/null || echo "")
-case "$MSG" in
-  *"[skip ci]"*|*"[skip vercel]"*|*"[ci skip]"*)
-    echo "preview + skip marker: skipping build"
-    exit 0
-    ;;
-esac
-
-echo "preview: building"
-exit 1
+echo "photo-pods is parked (LAC-5545 / LAC-6903 decision 1a): skipping every build"
+exit 0
