@@ -11,8 +11,10 @@
  * @module server/services/pod-storage-cleanup
  */
 
+import { and, inArray, notInArray, or } from "drizzle-orm";
+import { env } from "@/env";
 import { db } from "@/server/db";
-import { type PodMedia, podStorageDeleteQueue } from "@/server/db/pods-schema";
+import { type PodMedia, podMedia, podStorageDeleteQueue, pods } from "@/server/db/pods-schema";
 import { deleteObject, loadStorageConfig, publicUrlForKey } from "@/server/services/pod-storage";
 
 /**
@@ -22,15 +24,19 @@ import { deleteObject, loadStorageConfig, publicUrlForKey } from "@/server/servi
  * The legacy `url` / `thumbnailUrl` columns are written by the pre-R2 upload
  * path, which still runs whenever R2 is not configured, so this is live and not
  * only old rows. A blob URL is returned as-is among the keys; R2 keys never
- * start with `https://`, and `deleteObjectsWithRetry` routes on that. Hosts
- * other than Vercel Blob are skipped: `@vercel/blob` cannot delete them.
+ * start with `https://`, and `deleteObjectsWithRetry` routes on that. The
+ * `uploadFile` fallback (LAC-6927) writes an S3 URL for the `AWS_BUCKET_NAME`
+ * bucket instead, which is kept too and deleted through the S3 client. Hosts
+ * that are neither are skipped: nothing here can delete them.
  */
 export const collectMediaKeys = (
   media: Pick<PodMedia, "storageKey" | "variants"> & Partial<Pick<PodMedia, "url" | "thumbnailUrl">>
 ): string[] => {
   const keys: string[] = [];
   for (const legacy of new Set([media.url, media.thumbnailUrl])) {
-    if (legacy && isVercelBlobUrl(legacy)) keys.push(legacy);
+    if (legacy && (isVercelBlobUrl(legacy) || legacyS3KeyFromUrl(legacy) !== null)) {
+      keys.push(legacy);
+    }
   }
   if (media.storageKey) keys.push(media.storageKey);
   const variants = media.variants ?? null;
@@ -42,8 +48,114 @@ export const collectMediaKeys = (
   return keys;
 };
 
+/**
+ * True when a Blob URL's path sits under `pods/<podId>/`, the prefix
+ * `uploadPhoto` writes. Decoded and segment-checked so `..` cannot walk out.
+ */
+const isUnderPodPrefix = (value: string, podId: string): boolean => {
+  try {
+    const path = decodeURIComponent(new URL(value).pathname).slice(1).split("/");
+    return path[0] === "pods" && path[1] === podId && path.length > 2 && !path.includes("..");
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Cover URLs that are safe to erase with their pod (LAC-6927, LAC-7037 H1).
+ *
+ * `updatePod` stores `coverPhotoUrl` as the caller typed it, so the column can
+ * point at any object, including one that belongs to another user. A cover is
+ * erased only when it is provably this pod's own: a Vercel Blob URL under
+ * `pods/<podId>/`, or equal to a url/thumbnailUrl of this pod's media rows
+ * (`ownMediaUrls`). It is then dropped if any pod or media row outside
+ * `deletedPodIds` still references it. S3 covers are never added here: a cover
+ * that is also a media url is already collected from the media row, and a
+ * cover-only S3 url has no proof of ownership. Returns Blob URLs only.
+ */
+export const collectOwnCoverTargets = async (
+  ownedPods: readonly { id: string; coverPhotoUrl: string | null }[],
+  ownMediaUrls: Iterable<string | null | undefined>
+): Promise<string[]> => {
+  const own = new Set<string>();
+  for (const u of ownMediaUrls) if (u) own.add(u);
+  const candidates = new Set<string>();
+  for (const p of ownedPods) {
+    const cover = p.coverPhotoUrl;
+    if (!cover || !isVercelBlobUrl(cover)) continue;
+    if (own.has(cover) || isUnderPodPrefix(cover, p.id)) candidates.add(cover);
+  }
+  if (candidates.size === 0 || !db) return [];
+
+  const list = [...candidates];
+  const deletedPodIds = ownedPods.map((p) => p.id);
+  // Fail closed: if the reference lookup throws, erase nothing extra.
+  try {
+    const [coverRefs, mediaRefs] = await Promise.all([
+      db
+        .select({ url: pods.coverPhotoUrl })
+        .from(pods)
+        .where(
+          // notInArray is only safe with a non-empty list; ownedPods is non-empty here.
+          and(inArray(pods.coverPhotoUrl, list), notInArray(pods.id, deletedPodIds))
+        ),
+      db
+        .select({ url: podMedia.url, thumbnailUrl: podMedia.thumbnailUrl })
+        .from(podMedia)
+        .where(
+          and(
+            or(inArray(podMedia.url, list), inArray(podMedia.thumbnailUrl, list)),
+            notInArray(podMedia.podId, deletedPodIds)
+          )
+        ),
+    ]);
+    const shared = new Set<string>();
+    for (const r of coverRefs) if (r.url) shared.add(r.url);
+    for (const r of mediaRefs) {
+      if (r.url) shared.add(r.url);
+      if (r.thumbnailUrl) shared.add(r.thumbnailUrl);
+    }
+    return list.filter((u) => !shared.has(u));
+  } catch (err) {
+    console.error("[pod-storage-cleanup] cover reference check failed", err);
+    return [];
+  }
+};
+
 /** Queue `reason` for a legacy Vercel Blob URL (vs the default R2 key delete). */
 export const BLOB_URL_QUEUE_REASON = "blob-url";
+
+/** Queue `reason` for a legacy `uploadFile` S3 URL. */
+export const S3_URL_QUEUE_REASON = "s3-url";
+
+/**
+ * Map an `uploadFile` S3 URL back to its object key, or null when the URL is
+ * not in the configured `AWS_BUCKET_NAME` bucket. `uploadFile` stores the
+ * presigned URL minus its query string, so the key is the decoded path
+ * (virtual-hosted style) or the path after the bucket segment (path style).
+ */
+export const legacyS3KeyFromUrl = (value: string): string | null => {
+  const bucket = env.AWS_BUCKET_NAME;
+  if (!bucket) return null;
+  try {
+    const { hostname, protocol, pathname } = new URL(value);
+    if (protocol !== "https:") return null;
+    const isAws = hostname.endsWith(".amazonaws.com");
+    if (!isAws) return null;
+    let path: string;
+    if (hostname.startsWith(`${bucket}.s3.`) || hostname.startsWith(`${bucket}.s3-`)) {
+      path = pathname.slice(1);
+    } else if (/^s3[.-]/.test(hostname) && pathname.startsWith(`/${bucket}/`)) {
+      path = pathname.slice(bucket.length + 2);
+    } else {
+      return null;
+    }
+    const key = decodeURIComponent(path);
+    return key.length > 0 ? key : null;
+  } catch {
+    return null;
+  }
+};
 
 const isVercelBlobUrl = (value: string): boolean => {
   try {
@@ -74,10 +186,15 @@ export const deleteObjectsWithRetry = async (
   targets: readonly string[]
 ): Promise<{ deleted: string[]; queued: string[] }> => {
   const blobUrls = targets.filter(isVercelBlobUrl);
-  const keys = targets.filter((t) => !isVercelBlobUrl(t));
+  const s3Urls = targets.filter((t) => !isVercelBlobUrl(t) && legacyS3KeyFromUrl(t) !== null);
+  const keys = targets.filter((t) => !isVercelBlobUrl(t) && !s3Urls.includes(t));
   const blob = await deleteBlobUrls(blobUrls);
+  const s3 = await deleteS3Urls(s3Urls);
   const r2 = await deleteKeys(keys);
-  return { deleted: [...r2.deleted, ...blob.deleted], queued: [...r2.queued, ...blob.queued] };
+  return {
+    deleted: [...r2.deleted, ...blob.deleted, ...s3.deleted],
+    queued: [...r2.queued, ...blob.queued, ...s3.queued],
+  };
 };
 
 /** Legacy Vercel Blob objects, by URL. `del` needs BLOB_READ_WRITE_TOKEN and throws without it. */
@@ -95,6 +212,30 @@ const deleteBlobUrls = async (urls: string[]): Promise<{ deleted: string[]; queu
     await enqueueRetries(urls, BLOB_URL_QUEUE_REASON);
     return { deleted: [], queued: urls };
   }
+};
+
+/** Legacy `uploadFile` objects. `deleteFromS3` throws when S3 is disabled or the delete fails. */
+const deleteS3Urls = async (urls: string[]): Promise<{ deleted: string[]; queued: string[] }> => {
+  if (urls.length === 0) return { deleted: [], queued: [] };
+  const { deleteFromS3 } = await import("@/server/services/s3");
+  const deleted: string[] = [];
+  const failed: string[] = [];
+  for (const url of urls) {
+    const key = legacyS3KeyFromUrl(url);
+    try {
+      if (!key) throw new Error("no key");
+      await deleteFromS3(key);
+      deleted.push(url);
+    } catch (err) {
+      console.warn(
+        "[pod-storage-cleanup] s3 delete failed",
+        JSON.stringify({ url, error: String(err) })
+      );
+      failed.push(url);
+    }
+  }
+  if (failed.length > 0) await enqueueRetries(failed, S3_URL_QUEUE_REASON);
+  return { deleted, queued: failed };
 };
 
 const deleteKeys = async (keys: string[]): Promise<{ deleted: string[]; queued: string[] }> => {

@@ -7,7 +7,11 @@ import { auth } from "@/server/auth";
 import { db } from "@/server/db";
 import { podMedia, pods } from "@/server/db/pods-schema";
 import { accounts, users } from "@/server/db/schema";
-import { collectMediaKeys, deleteObjectsWithRetry } from "@/server/services/pod-storage-cleanup";
+import {
+  collectMediaKeys,
+  collectOwnCoverTargets,
+  deleteObjectsWithRetry,
+} from "@/server/services/pod-storage-cleanup";
 
 interface ProfileData {
   name: string;
@@ -97,11 +101,14 @@ export async function deleteAccount() {
     // GDPR (LAC-2917 H2): before we cascade-delete the user row, enumerate
     // every R2 object owned by them — both photos they uploaded and photos
     // in pods they own — so the storage deletes can run after the DB is
-    // gone. Failed keys queue for worker retry.
+    // gone. Failed keys are queued in pod_storage_delete_queue; no worker
+    // drains it yet (LAC-6924), so they are not retried today.
     const userId = session.user.id;
-    const ownedPodIds = (
-      await db.select({ id: pods.id }).from(pods).where(eq(pods.createdById, userId))
-    ).map((r) => r.id);
+    const ownedPods = await db
+      .select({ id: pods.id, coverPhotoUrl: pods.coverPhotoUrl })
+      .from(pods)
+      .where(eq(pods.createdById, userId));
+    const ownedPodIds = ownedPods.map((r) => r.id);
     const mediaRows = await db
       .select({
         storageKey: podMedia.storageKey,
@@ -121,10 +128,18 @@ export async function deleteAccount() {
             )
           : eq(podMedia.uploadedById, userId)
       );
-    const keys = mediaRows.flatMap((m) => collectMediaKeys(m));
+    const keys = [
+      ...mediaRows.flatMap((m) => collectMediaKeys(m)),
+      // Pod cover URLs are a fourth URL location (LAC-6927). Covers are
+      // caller-supplied, so only ones provably owned by the pod are erased.
+      ...(await collectOwnCoverTargets(
+        ownedPods,
+        mediaRows.flatMap((m) => [m.url, m.thumbnailUrl])
+      )),
+    ];
 
     await db.delete(users).where(eq(users.id, userId));
-    if (keys.length > 0) await deleteObjectsWithRetry(keys);
+    if (keys.length > 0) await deleteObjectsWithRetry([...new Set(keys)]);
 
     return { success: true, message: "Account deleted successfully" };
   } catch (error) {
