@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { isPodMediaRouteUrl } from "@/lib/pods/media-url";
+import { isPodMediaRouteUrl, podMediaLoader } from "@/lib/pods/media-url";
 import { REACTIONS, type ReactionCounts } from "@/lib/pods/reactions";
 import { deletePhoto, reactToMedia } from "@/server/actions/pods";
 import { ReactionsTray } from "./reactions-tray";
@@ -122,8 +122,8 @@ export const PhotoGrid = ({ photos, canDelete, currentUserId }: PhotoGridProps) 
                 sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
                 // Media behind the pod ACL has to be fetched by the browser,
                 // which carries the session cookie; the image optimizer does
-                // not. See isPodMediaRouteUrl.
-                unoptimized={isPodMediaRouteUrl(src)}
+                // not. The route resizes it instead. See podMediaLoader.
+                loader={isPodMediaRouteUrl(src) ? podMediaLoader : undefined}
               />
               {totalReactions > 0 && (
                 <span className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-0.5 rounded-full bg-black/45 px-2 py-0.5 text-[11px] text-white backdrop-blur-sm">
@@ -171,8 +171,16 @@ export const PhotoGrid = ({ photos, canDelete, currentUserId }: PhotoGridProps) 
                 width={1200}
                 height={800}
                 className="h-auto max-h-[80vh] w-full object-contain"
+                // The dialog is `max-w-5xl` (1024px), so without this the
+                // loader is asked for a 1200/2048 pair picked off `width`
+                // rather than the box it actually renders in.
+                sizes="(max-width: 1024px) 100vw, 1024px"
                 priority
-                unoptimized={isPodMediaRouteUrl(selectedPhoto.url ?? selectedPhoto.thumbnailUrl)}
+                loader={
+                  isPodMediaRouteUrl(selectedPhoto.url ?? selectedPhoto.thumbnailUrl)
+                    ? podMediaLoader
+                    : undefined
+                }
               />
               <div className="absolute right-0 bottom-0 left-0 space-y-3 bg-gradient-to-t from-black/85 to-transparent p-4">
                 <ReactionsTray
