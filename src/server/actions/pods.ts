@@ -22,7 +22,11 @@ import {
 } from "@/server/services/pod-media-metadata";
 import * as policy from "@/server/services/pod-policy";
 import * as reactions from "@/server/services/pod-reactions";
-import { collectMediaKeys, deleteObjectsWithRetry } from "@/server/services/pod-storage-cleanup";
+import {
+  collectMediaKeys,
+  collectOwnCoverTargets,
+  deleteObjectsWithRetry,
+} from "@/server/services/pod-storage-cleanup";
 import {
   applyMediaUrlPolicy,
   buildStorageKey,
@@ -192,13 +196,18 @@ export const deletePod = async (podId: string) => {
     .from(podMedia)
     .where(eq(podMedia.podId, podId));
   const keys = mediaRows.flatMap((m) => collectMediaKeys(m));
-  // The cover URL is a fourth URL location (LAC-6927). It cascades with the
-  // row, but the object behind it would survive unless a media row shares it.
+  // The cover URL is a fourth URL location (LAC-6927). `updatePod` stores it
+  // unchecked, so only a cover provably this pod's own is erased (LAC-7037).
   const [podRow] = await database
     .select({ coverPhotoUrl: pods.coverPhotoUrl })
     .from(pods)
     .where(eq(pods.id, podId));
-  keys.push(...collectMediaKeys({ storageKey: null, variants: null, url: podRow?.coverPhotoUrl }));
+  keys.push(
+    ...(await collectOwnCoverTargets(
+      [{ id: podId, coverPhotoUrl: podRow?.coverPhotoUrl ?? null }],
+      mediaRows.flatMap((m) => [m.url, m.thumbnailUrl])
+    ))
+  );
 
   await database.delete(pods).where(eq(pods.id, podId));
   if (keys.length > 0) await deleteObjectsWithRetry([...new Set(keys)]);

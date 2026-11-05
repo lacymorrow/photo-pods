@@ -7,8 +7,12 @@ const mocks = vi.hoisted(() => ({
   deleteObject: vi.fn(),
   publicUrlForKey: vi.fn(() => null as string | null),
   dbInsert: vi.fn(),
+  dbSelect: vi.fn(),
   deleteFromS3: vi.fn(async (_key: string) => undefined),
+  env: { AWS_BUCKET_NAME: undefined as string | undefined },
 }));
+
+vi.mock("@/env", () => ({ env: mocks.env }));
 
 vi.mock("@/server/services/s3", () => ({ deleteFromS3: mocks.deleteFromS3 }));
 
@@ -23,11 +27,13 @@ vi.mock("@vercel/blob", () => ({ del: mocks.blobDel }));
 vi.mock("@/server/db", () => ({
   db: {
     insert: mocks.dbInsert,
+    select: mocks.dbSelect,
   },
 }));
 
 import {
   collectMediaKeys,
+  collectOwnCoverTargets,
   deleteObjectsWithRetry,
   legacyS3KeyFromUrl,
 } from "@/server/services/pod-storage-cleanup";
@@ -190,7 +196,7 @@ const S3 = "https://my-bucket.s3.us-east-1.amazonaws.com/1700-my%20photo.jpg";
 describe("legacy uploadFile S3 urls (LAC-6927)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubEnv("AWS_BUCKET_NAME", "my-bucket");
+    mocks.env.AWS_BUCKET_NAME = "my-bucket";
     mocks.deleteFromS3.mockResolvedValue(undefined);
   });
 
@@ -206,7 +212,7 @@ describe("legacy uploadFile S3 urls (LAC-6927)", () => {
     expect(legacyS3KeyFromUrl("https://my-bucket.s3.evil.com/x.jpg")).toBeNull();
     expect(legacyS3KeyFromUrl("http://my-bucket.s3.us-east-1.amazonaws.com/x.jpg")).toBeNull();
     expect(legacyS3KeyFromUrl("https://my-bucket.s3.us-east-1.amazonaws.com/")).toBeNull();
-    vi.stubEnv("AWS_BUCKET_NAME", "");
+    mocks.env.AWS_BUCKET_NAME = "";
     expect(legacyS3KeyFromUrl(S3)).toBeNull();
   });
 
@@ -230,5 +236,60 @@ describe("legacy uploadFile S3 urls (LAC-6927)", () => {
     const result = await deleteObjectsWithRetry([S3]);
     expect(result).toEqual({ deleted: [], queued: [S3] });
     expect(values).toHaveBeenCalledWith([{ storageKey: S3, reason: "s3-url" }]);
+  });
+});
+
+describe("collectOwnCoverTargets (LAC-7037 H1)", () => {
+  const BLOB = "https://abc.public.blob.vercel-storage.com";
+  const own = `${BLOB}/pods/p-1/1-a.jpg`;
+  const pod = { id: "p-1", coverPhotoUrl: own };
+  // Two reference lookups run: other pods' covers, then other pods' media.
+  const refs = (coverRefs: unknown[], mediaRefs: unknown[]) => {
+    const results = [coverRefs, mediaRefs];
+    mocks.dbSelect.mockImplementation(() => ({
+      from: () => ({ where: async () => results.shift() ?? [] }),
+    }));
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    refs([], []);
+  });
+
+  it("returns a Blob cover under the pod's own prefix", async () => {
+    expect(await collectOwnCoverTargets([pod], [])).toEqual([own]);
+  });
+
+  it("returns a Blob cover equal to one of the pod's media urls", async () => {
+    const url = `${BLOB}/legacy/x.jpg`;
+    expect(await collectOwnCoverTargets([{ id: "p-1", coverPhotoUrl: url }], [url])).toEqual([url]);
+  });
+
+  it("rejects another pod's prefix, a prefix walk-out, S3 and unknown hosts", async () => {
+    for (const cover of [
+      `${BLOB}/pods/p-2/1-a.jpg`,
+      `${BLOB}/pods/p-1/../p-2/1-a.jpg`,
+      `${BLOB}/pods/p-1%2F..%2Fp-2/1-a.jpg`,
+      `${BLOB}/pods/p-1`,
+      "https://my-bucket.s3.us-east-1.amazonaws.com/pods/p-1/a.jpg",
+      "https://evil.example.com/pods/p-1/a.jpg",
+      null,
+    ]) {
+      expect(await collectOwnCoverTargets([{ id: "p-1", coverPhotoUrl: cover }], [])).toEqual([]);
+    }
+  });
+
+  it("drops a cover another pod's cover or media still references", async () => {
+    refs([{ url: own }], []);
+    expect(await collectOwnCoverTargets([pod], [])).toEqual([]);
+    refs([], [{ url: null, thumbnailUrl: own }]);
+    expect(await collectOwnCoverTargets([pod], [])).toEqual([]);
+  });
+
+  it("fails closed when the reference lookup throws", async () => {
+    mocks.dbSelect.mockImplementation(() => {
+      throw new Error("db down");
+    });
+    expect(await collectOwnCoverTargets([pod], [])).toEqual([]);
   });
 });

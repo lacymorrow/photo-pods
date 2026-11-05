@@ -11,8 +11,10 @@
  * @module server/services/pod-storage-cleanup
  */
 
+import { and, inArray, notInArray, or } from "drizzle-orm";
+import { env } from "@/env";
 import { db } from "@/server/db";
-import { type PodMedia, podStorageDeleteQueue } from "@/server/db/pods-schema";
+import { type PodMedia, podMedia, podStorageDeleteQueue, pods } from "@/server/db/pods-schema";
 import { deleteObject, loadStorageConfig, publicUrlForKey } from "@/server/services/pod-storage";
 
 /**
@@ -46,6 +48,80 @@ export const collectMediaKeys = (
   return keys;
 };
 
+/**
+ * True when a Blob URL's path sits under `pods/<podId>/`, the prefix
+ * `uploadPhoto` writes. Decoded and segment-checked so `..` cannot walk out.
+ */
+const isUnderPodPrefix = (value: string, podId: string): boolean => {
+  try {
+    const path = decodeURIComponent(new URL(value).pathname).slice(1).split("/");
+    return path[0] === "pods" && path[1] === podId && path.length > 2 && !path.includes("..");
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Cover URLs that are safe to erase with their pod (LAC-6927, LAC-7037 H1).
+ *
+ * `updatePod` stores `coverPhotoUrl` as the caller typed it, so the column can
+ * point at any object, including one that belongs to another user. A cover is
+ * erased only when it is provably this pod's own: a Vercel Blob URL under
+ * `pods/<podId>/`, or equal to a url/thumbnailUrl of this pod's media rows
+ * (`ownMediaUrls`). It is then dropped if any pod or media row outside
+ * `deletedPodIds` still references it. S3 covers are never added here: a cover
+ * that is also a media url is already collected from the media row, and a
+ * cover-only S3 url has no proof of ownership. Returns Blob URLs only.
+ */
+export const collectOwnCoverTargets = async (
+  ownedPods: ReadonlyArray<{ id: string; coverPhotoUrl: string | null }>,
+  ownMediaUrls: Iterable<string | null | undefined>
+): Promise<string[]> => {
+  const own = new Set<string>();
+  for (const u of ownMediaUrls) if (u) own.add(u);
+  const candidates = new Set<string>();
+  for (const p of ownedPods) {
+    const cover = p.coverPhotoUrl;
+    if (!cover || !isVercelBlobUrl(cover)) continue;
+    if (own.has(cover) || isUnderPodPrefix(cover, p.id)) candidates.add(cover);
+  }
+  if (candidates.size === 0 || !db) return [];
+
+  const list = [...candidates];
+  const deletedPodIds = ownedPods.map((p) => p.id);
+  // Fail closed: if the reference lookup throws, erase nothing extra.
+  try {
+    const [coverRefs, mediaRefs] = await Promise.all([
+      db
+        .select({ url: pods.coverPhotoUrl })
+        .from(pods)
+        .where(
+          // notInArray is only safe with a non-empty list; ownedPods is non-empty here.
+          and(inArray(pods.coverPhotoUrl, list), notInArray(pods.id, deletedPodIds))
+        ),
+      db
+        .select({ url: podMedia.url, thumbnailUrl: podMedia.thumbnailUrl })
+        .from(podMedia)
+        .where(
+          and(
+            or(inArray(podMedia.url, list), inArray(podMedia.thumbnailUrl, list)),
+            notInArray(podMedia.podId, deletedPodIds)
+          )
+        ),
+    ]);
+    const shared = new Set<string>();
+    for (const r of coverRefs) if (r.url) shared.add(r.url);
+    for (const r of mediaRefs) {
+      if (r.url) shared.add(r.url);
+      if (r.thumbnailUrl) shared.add(r.thumbnailUrl);
+    }
+    return list.filter((u) => !shared.has(u));
+  } catch (err) {
+    console.error("[pod-storage-cleanup] cover reference check failed", err);
+    return [];
+  }
+};
+
 /** Queue `reason` for a legacy Vercel Blob URL (vs the default R2 key delete). */
 export const BLOB_URL_QUEUE_REASON = "blob-url";
 
@@ -59,7 +135,7 @@ export const S3_URL_QUEUE_REASON = "s3-url";
  * (virtual-hosted style) or the path after the bucket segment (path style).
  */
 export const legacyS3KeyFromUrl = (value: string): string | null => {
-  const bucket = process.env.AWS_BUCKET_NAME;
+  const bucket = env.AWS_BUCKET_NAME;
   if (!bucket) return null;
   try {
     const { hostname, protocol, pathname } = new URL(value);
