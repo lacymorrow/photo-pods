@@ -192,9 +192,16 @@ export const deletePod = async (podId: string) => {
     .from(podMedia)
     .where(eq(podMedia.podId, podId));
   const keys = mediaRows.flatMap((m) => collectMediaKeys(m));
+  // The cover URL is a fourth URL location (LAC-6927). It cascades with the
+  // row, but the object behind it would survive unless a media row shares it.
+  const [podRow] = await database
+    .select({ coverPhotoUrl: pods.coverPhotoUrl })
+    .from(pods)
+    .where(eq(pods.id, podId));
+  keys.push(...collectMediaKeys({ storageKey: null, variants: null, url: podRow?.coverPhotoUrl }));
 
   await database.delete(pods).where(eq(pods.id, podId));
-  if (keys.length > 0) await deleteObjectsWithRetry(keys);
+  if (keys.length > 0) await deleteObjectsWithRetry([...new Set(keys)]);
   revalidatePath("/pods");
 };
 

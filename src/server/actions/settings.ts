@@ -99,9 +99,11 @@ export async function deleteAccount() {
     // in pods they own — so the storage deletes can run after the DB is
     // gone. Failed keys queue for worker retry.
     const userId = session.user.id;
-    const ownedPodIds = (
-      await db.select({ id: pods.id }).from(pods).where(eq(pods.createdById, userId))
-    ).map((r) => r.id);
+    const ownedPods = await db
+      .select({ id: pods.id, coverPhotoUrl: pods.coverPhotoUrl })
+      .from(pods)
+      .where(eq(pods.createdById, userId));
+    const ownedPodIds = ownedPods.map((r) => r.id);
     const mediaRows = await db
       .select({
         storageKey: podMedia.storageKey,
@@ -121,10 +123,16 @@ export async function deleteAccount() {
             )
           : eq(podMedia.uploadedById, userId)
       );
-    const keys = mediaRows.flatMap((m) => collectMediaKeys(m));
+    const keys = [
+      ...mediaRows.flatMap((m) => collectMediaKeys(m)),
+      // Pod cover URLs are a fourth URL location (LAC-6927).
+      ...ownedPods.flatMap((p) =>
+        collectMediaKeys({ storageKey: null, variants: null, url: p.coverPhotoUrl })
+      ),
+    ];
 
     await db.delete(users).where(eq(users.id, userId));
-    if (keys.length > 0) await deleteObjectsWithRetry(keys);
+    if (keys.length > 0) await deleteObjectsWithRetry([...new Set(keys)]);
 
     return { success: true, message: "Account deleted successfully" };
   } catch (error) {

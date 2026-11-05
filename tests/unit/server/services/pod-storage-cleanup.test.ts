@@ -7,7 +7,10 @@ const mocks = vi.hoisted(() => ({
   deleteObject: vi.fn(),
   publicUrlForKey: vi.fn(() => null as string | null),
   dbInsert: vi.fn(),
+  deleteFromS3: vi.fn(async (_key: string) => undefined),
 }));
+
+vi.mock("@/server/services/s3", () => ({ deleteFromS3: mocks.deleteFromS3 }));
 
 vi.mock("@/server/services/pod-storage", () => ({
   loadStorageConfig: mocks.loadStorageConfig,
@@ -23,7 +26,11 @@ vi.mock("@/server/db", () => ({
   },
 }));
 
-import { collectMediaKeys, deleteObjectsWithRetry } from "@/server/services/pod-storage-cleanup";
+import {
+  collectMediaKeys,
+  deleteObjectsWithRetry,
+  legacyS3KeyFromUrl,
+} from "@/server/services/pod-storage-cleanup";
 
 const R2_CONFIG = { provider: "r2", bucket: "pods" };
 
@@ -175,5 +182,53 @@ describe("deleteObjectsWithRetry (LAC-2917 H2)", () => {
 
     expect(result).toEqual({ deleted: ["ok.jpg"], queued: ["fail.jpg"] });
     expect(values).toHaveBeenCalledWith([{ storageKey: "fail.jpg" }]);
+  });
+});
+
+const S3 = "https://my-bucket.s3.us-east-1.amazonaws.com/1700-my%20photo.jpg";
+
+describe("legacy uploadFile S3 urls (LAC-6927)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubEnv("AWS_BUCKET_NAME", "my-bucket");
+    mocks.deleteFromS3.mockResolvedValue(undefined);
+  });
+
+  it("maps virtual-hosted and path-style urls back to the decoded key", () => {
+    expect(legacyS3KeyFromUrl(S3)).toBe("1700-my photo.jpg");
+    expect(legacyS3KeyFromUrl("https://s3.us-east-1.amazonaws.com/my-bucket/a/b.jpg")).toBe(
+      "a/b.jpg"
+    );
+  });
+
+  it("rejects other buckets, other hosts, http, and an unset bucket", () => {
+    expect(legacyS3KeyFromUrl("https://other.s3.us-east-1.amazonaws.com/x.jpg")).toBeNull();
+    expect(legacyS3KeyFromUrl("https://my-bucket.s3.evil.com/x.jpg")).toBeNull();
+    expect(legacyS3KeyFromUrl("http://my-bucket.s3.us-east-1.amazonaws.com/x.jpg")).toBeNull();
+    expect(legacyS3KeyFromUrl("https://my-bucket.s3.us-east-1.amazonaws.com/")).toBeNull();
+    vi.stubEnv("AWS_BUCKET_NAME", "");
+    expect(legacyS3KeyFromUrl(S3)).toBeNull();
+  });
+
+  it("collectMediaKeys keeps the S3 url of a row with no storage key", () => {
+    expect(collectMediaKeys({ storageKey: null, variants: null, url: S3 } as any)).toEqual([S3]);
+  });
+
+  it("deletes the url through the S3 client by key, not R2", async () => {
+    mocks.loadStorageConfig.mockReturnValue(R2_CONFIG);
+    const result = await deleteObjectsWithRetry([S3]);
+    expect(mocks.deleteFromS3).toHaveBeenCalledWith("1700-my photo.jpg");
+    expect(mocks.deleteObject).not.toHaveBeenCalled();
+    expect(result).toEqual({ deleted: [S3], queued: [] });
+  });
+
+  it("queues with reason s3-url when the delete throws, and never throws", async () => {
+    mocks.loadStorageConfig.mockReturnValue(R2_CONFIG);
+    mocks.deleteFromS3.mockRejectedValue(new Error("S3 storage is not enabled"));
+    const values = vi.fn(async () => undefined);
+    mocks.dbInsert.mockReturnValue({ values });
+    const result = await deleteObjectsWithRetry([S3]);
+    expect(result).toEqual({ deleted: [], queued: [S3] });
+    expect(values).toHaveBeenCalledWith([{ storageKey: S3, reason: "s3-url" }]);
   });
 });
