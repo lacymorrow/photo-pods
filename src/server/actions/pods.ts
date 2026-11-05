@@ -186,6 +186,8 @@ export const deletePod = async (podId: string) => {
     .select({
       storageKey: podMedia.storageKey,
       variants: podMedia.variants,
+      url: podMedia.url,
+      thumbnailUrl: podMedia.thumbnailUrl,
     })
     .from(podMedia)
     .where(eq(podMedia.podId, podId));

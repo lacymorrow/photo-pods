@@ -16,11 +16,22 @@ import { type PodMedia, podStorageDeleteQueue } from "@/server/db/pods-schema";
 import { deleteObject, loadStorageConfig, publicUrlForKey } from "@/server/services/pod-storage";
 
 /**
- * Collect every storage key associated with a media row: the original plus
- * any precomputed thumbnail variants.
+ * Collect every storage target associated with a media row: the original key
+ * plus any precomputed variants, and any legacy Vercel Blob URL (LAC-6923).
+ *
+ * The legacy `url` / `thumbnailUrl` columns are written by the pre-R2 upload
+ * path, which still runs whenever R2 is not configured, so this is live and not
+ * only old rows. A blob URL is returned as-is among the keys; R2 keys never
+ * start with `https://`, and `deleteObjectsWithRetry` routes on that. Hosts
+ * other than Vercel Blob are skipped: `@vercel/blob` cannot delete them.
  */
-export const collectMediaKeys = (media: Pick<PodMedia, "storageKey" | "variants">): string[] => {
+export const collectMediaKeys = (
+  media: Pick<PodMedia, "storageKey" | "variants"> & Partial<Pick<PodMedia, "url" | "thumbnailUrl">>
+): string[] => {
   const keys: string[] = [];
+  for (const legacy of new Set([media.url, media.thumbnailUrl])) {
+    if (legacy && isVercelBlobUrl(legacy)) keys.push(legacy);
+  }
   if (media.storageKey) keys.push(media.storageKey);
   const variants = media.variants ?? null;
   if (variants) {
@@ -31,10 +42,24 @@ export const collectMediaKeys = (media: Pick<PodMedia, "storageKey" | "variants"
   return keys;
 };
 
-const enqueueRetries = async (keys: string[]): Promise<void> => {
+/** Queue `reason` for a legacy Vercel Blob URL (vs the default R2 key delete). */
+export const BLOB_URL_QUEUE_REASON = "blob-url";
+
+const isVercelBlobUrl = (value: string): boolean => {
+  try {
+    const { hostname, protocol } = new URL(value);
+    return protocol === "https:" && hostname.endsWith(".blob.vercel-storage.com");
+  } catch {
+    return false;
+  }
+};
+
+const enqueueRetries = async (keys: string[], reason?: string): Promise<void> => {
   if (!db || keys.length === 0) return;
   try {
-    await db.insert(podStorageDeleteQueue).values(keys.map((storageKey) => ({ storageKey })));
+    await db
+      .insert(podStorageDeleteQueue)
+      .values(keys.map((storageKey) => (reason ? { storageKey, reason } : { storageKey })));
   } catch (err) {
     console.error("[pod-storage-cleanup] failed to enqueue retry", err);
   }
@@ -46,8 +71,34 @@ const enqueueRetries = async (keys: string[]): Promise<void> => {
  * by a transient storage error.
  */
 export const deleteObjectsWithRetry = async (
-  keys: readonly string[]
+  targets: readonly string[]
 ): Promise<{ deleted: string[]; queued: string[] }> => {
+  const blobUrls = targets.filter(isVercelBlobUrl);
+  const keys = targets.filter((t) => !isVercelBlobUrl(t));
+  const blob = await deleteBlobUrls(blobUrls);
+  const r2 = await deleteKeys(keys);
+  return { deleted: [...r2.deleted, ...blob.deleted], queued: [...r2.queued, ...blob.queued] };
+};
+
+/** Legacy Vercel Blob objects, by URL. `del` needs BLOB_READ_WRITE_TOKEN and throws without it. */
+const deleteBlobUrls = async (urls: string[]): Promise<{ deleted: string[]; queued: string[] }> => {
+  if (urls.length === 0) return { deleted: [], queued: [] };
+  try {
+    const { del } = await import("@vercel/blob");
+    await del(urls);
+    return { deleted: urls, queued: [] };
+  } catch (err) {
+    console.warn(
+      "[pod-storage-cleanup] vercel blob delete failed",
+      JSON.stringify({ count: urls.length, error: String(err) })
+    );
+    await enqueueRetries(urls, BLOB_URL_QUEUE_REASON);
+    return { deleted: [], queued: urls };
+  }
+};
+
+const deleteKeys = async (keys: string[]): Promise<{ deleted: string[]; queued: string[] }> => {
+  if (keys.length === 0) return { deleted: [], queued: [] };
   const config = loadStorageConfig();
   // No S3-compatible storage configured yet — everything goes to the queue
   // so the worker can drain once R2 is provisioned.

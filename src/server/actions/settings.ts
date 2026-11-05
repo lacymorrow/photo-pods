@@ -106,6 +106,8 @@ export async function deleteAccount() {
       .select({
         storageKey: podMedia.storageKey,
         variants: podMedia.variants,
+        url: podMedia.url,
+        thumbnailUrl: podMedia.thumbnailUrl,
       })
       .from(podMedia)
       .where(
