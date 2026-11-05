@@ -74,7 +74,7 @@ const isUnderPodPrefix = (value: string, podId: string): boolean => {
  * cover-only S3 url has no proof of ownership. Returns Blob URLs only.
  */
 export const collectOwnCoverTargets = async (
-  ownedPods: ReadonlyArray<{ id: string; coverPhotoUrl: string | null }>,
+  ownedPods: readonly { id: string; coverPhotoUrl: string | null }[],
   ownMediaUrls: Iterable<string | null | undefined>
 ): Promise<string[]> => {
   const own = new Set<string>();
