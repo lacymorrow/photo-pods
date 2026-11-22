@@ -9,6 +9,7 @@ import {
   buildTimePublicEnv,
 } from "@/config/features-config";
 import { FILE_UPLOAD_MAX_SIZE } from "@/config/file";
+import { podMediaRemotePatterns } from "@/config/pod-media-hosts";
 import { reactGrabConfig } from "@/config/react-grab-config";
 import { redirects } from "@/config/redirects";
 import { getDerivedSecrets } from "@/config/secrets";
@@ -76,6 +77,13 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "better-auth.com",
       },
+      /*
+       * Public pod media. A public pod serves photos from their direct object
+       * URL, so the image optimizer has to accept our storage host or every
+       * tile 400s. Exact hostnames, derived from this deployment's own
+       * storage config. See src/config/pod-media-hosts.ts (LAC-5778).
+       */
+      ...podMediaRemotePatterns(),
     ],
     /*
      * Enhanced Image Optimization
